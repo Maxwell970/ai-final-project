@@ -1,3 +1,6 @@
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
 
@@ -7,20 +10,21 @@ from env import MiniRiskEnv
 def train_model():
     env = MiniRiskEnv()
 
-    # Checks that your custom Gymnasium environment follows the right format
     check_env(env, warn=True)
 
     model = PPO(
         "MlpPolicy",
         env,
         verbose=1,
-        learning_rate=0.001,
-        n_steps=64,
-        batch_size=32,
-        gamma=0.95,
+        learning_rate=0.0005,
+        n_steps=128,
+        batch_size=64,
+        gamma=0.97,
+        ent_coef=0.05,   # encourages exploration
+        device="cpu",
     )
 
-    model.learn(total_timesteps=10_000)
+    model.learn(total_timesteps=75_000)
 
     model.save("ppo_minirisk")
 
@@ -51,7 +55,7 @@ def test_model():
         done = terminated or truncated
 
     env.render()
-    print("PPO test complete.")
+    print("\nPPO test complete.")
     print(f"Total Reward: {total_reward}")
     print(f"Turns: {turns}")
 

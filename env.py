@@ -2,7 +2,6 @@ import gymnasium as gym
 from gymnasium import spaces
 import numpy as np
 import random
-import time
 
 
 class MiniRiskEnv(gym.Env):
@@ -14,62 +13,144 @@ class MiniRiskEnv(gym.Env):
 
         self.observation_space = spaces.Box(
             low=0,
-            high=10,
+            high=30,
             shape=(6,),
-            dtype=np.int32
+            dtype=np.int32,
         )
 
-        self.max_turns = 20
+        self.max_turns = 25
         self.reset()
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
+        # Board: A --- B --- C
+        # 0 = player/PPO, 1 = enemy
         self.owners = np.array([0, 1, 1], dtype=np.int32)
-        self.troops = np.array([5, 2, 1], dtype=np.int32)
-        self.turn = 0
 
+        # Tuned starting point
+        self.troops = np.array([6, 2, 2], dtype=np.int32)
+
+        self.turn = 0
         return self._get_obs(), {}
 
     def _get_obs(self):
         return np.concatenate([self.owners, self.troops]).astype(np.int32)
 
+    def _capture(self, attacker, defender, new_owner):
+        """
+        Combat rule:
+        If attacker wins, defender territory gets:
+        attacking_troops - defending_troops
+
+        Example:
+        A has 6, B has 2.
+        A attacks B.
+        B becomes player-owned with 4 troops.
+        A is left with 1 troop.
+        """
+        remaining_attackers = self.troops[attacker] - self.troops[defender]
+
+        self.owners[defender] = new_owner
+        self.troops[defender] = max(1, remaining_attackers)
+        self.troops[attacker] = 1
+
+    def _player_action(self, action):
+        reward = -0.1  # small time penalty
+
+        # Action 0: A attacks B
+        if action == 0:
+            if self.owners[0] == 0 and self.owners[1] == 1:
+                if self.troops[0] > self.troops[1]:
+                    self._capture(0, 1, 0)
+                    reward += 2.0
+                else:
+                    reward -= 0.75
+            else:
+                reward -= 0.25
+
+        # Action 1: B attacks C
+        elif action == 1:
+            if self.owners[1] == 0 and self.owners[2] == 1:
+                if self.troops[1] > self.troops[2]:
+                    self._capture(1, 2, 0)
+                    reward += 2.0
+                else:
+                    reward -= 0.75
+            else:
+                reward -= 0.25
+
+        # Action 2: reinforce weakest player-owned territory
+        elif action == 2:
+            owned = np.where(self.owners == 0)[0]
+
+            if len(owned) > 0:
+                weakest = owned[np.argmin(self.troops[owned])]
+                self.troops[weakest] += 1
+                reward += 0.1
+
+        return reward
+
+    def _enemy_turn(self):
+        penalty = 0.0
+
+        possible_attacks = []
+
+        # Enemy B attacks Player A
+        if self.owners[1] == 1 and self.owners[0] == 0:
+            possible_attacks.append((1, 0))
+
+        # Enemy C attacks Player B
+        if self.owners[2] == 1 and self.owners[1] == 0:
+            possible_attacks.append((2, 1))
+
+        strong_attacks = [
+            (attacker, defender)
+            for attacker, defender in possible_attacks
+            if self.troops[attacker] > self.troops[defender]
+        ]
+
+        # Enemy sometimes attacks if it can
+        if strong_attacks and random.random() < 0.25:
+            attacker, defender = random.choice(strong_attacks)
+            self._capture(attacker, defender, 1)
+            penalty -= 2.0
+
+        else:
+            # Enemy reinforces weakest enemy territory
+            enemy_territories = np.where(self.owners == 1)[0]
+
+            if len(enemy_territories) > 0:
+                weakest = enemy_territories[np.argmin(self.troops[enemy_territories])]
+                self.troops[weakest] += 1
+                penalty -= 0.1
+
+        return penalty
+
     def step(self, action):
         self.turn += 1
-        reward = -0.1
         terminated = False
         truncated = False
 
-        # Action 0: attack B from A
-        if action == 0:
-            if self.owners[0] == 0 and self.owners[1] == 1 and self.troops[0] > self.troops[1]:
-                self.owners[1] = 0
-                self.troops[1] = 1
-                self.troops[0] -= 1
-                reward = 1
+        reward = self._player_action(action)
 
-        # Action 1: attack C from B
-        elif action == 1:
-            if self.owners[1] == 0 and self.owners[2] == 1 and self.troops[1] > self.troops[2]:
-                self.owners[2] = 0
-                self.troops[2] = 1
-                self.troops[1] -= 1
-                reward = 1
-
-        # Action 2: reinforce owned territories
-        elif action == 2:
-            owned = np.where(self.owners == 0)[0]
-            reinforce_territory = random.choice(owned)
-            self.troops[reinforce_territory] += 1
-            reward = 0.2
-
-        # Win condition
+        # Player wins by owning all territories
         if np.all(self.owners == 0):
-            reward = 10
+            reward += 10
             terminated = True
 
-        # Stop if game takes too long
+        # Enemy acts only if player has not won
+        if not terminated:
+            reward += self._enemy_turn()
+
+        # Enemy wins by owning all territories
+        if np.all(self.owners == 1):
+            reward -= 10
+            terminated = True
+
+        # Timeout penalty discourages PPO from stalling
         if self.turn >= self.max_turns:
+            reward -= 5
             truncated = True
 
         return self._get_obs(), reward, terminated, truncated, {}
@@ -90,7 +171,7 @@ if __name__ == "__main__":
     obs, _ = env.reset()
     done = False
 
-    print("Starting MiniRisk simulation...")
+    print("Starting tuned MiniRisk simulation...")
 
     while not done:
         env.render()
@@ -101,7 +182,6 @@ if __name__ == "__main__":
         print(f"Action Taken: {action} | Reward: {reward}")
 
         done = terminated or truncated
-        time.sleep(0.5)
 
     env.render()
     print("Game over.")

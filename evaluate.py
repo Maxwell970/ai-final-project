@@ -37,7 +37,8 @@ def run_episode(env, agent_type, model=None):
         turns += 1
         done = terminated or truncated
 
-        if terminated:
+        # Only count as a win if the player owns all territories
+        if terminated and np.all(env.owners == 0):
             won = True
 
     return total_reward, turns, won
@@ -108,7 +109,7 @@ def main():
 
     print("\n=== Evaluation Results ===")
     print(f"{'Agent':<10} {'Avg Reward':<15} {'Avg Turns':<15} {'Win Rate':<15}")
-    print("-" * 55)
+    print("-" * 65)
 
     for r in results:
         print(
@@ -119,6 +120,7 @@ def main():
         )
 
     plot_results(results)
+
     print("\nCharts saved:")
     print("- avg_reward_by_agent.png")
     print("- avg_turns_by_agent.png")
