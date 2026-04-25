@@ -8,26 +8,21 @@ class MiniRiskEnv(gym.Env):
     def __init__(self):
         super().__init__()
 
-        # 5 territories: A, B, C, D, E
-        # Layout:
+        self.num_territories = 5
+        self.territory_names = ["A", "B", "C", "D", "E"]
+
+        # Map:
         # A --- B --- C
         # |     |
         # D --- E
-        self.num_territories = 5
-
-        self.territory_names = ["A", "B", "C", "D", "E"]
-
         self.adjacency = {
-            0: [1, 3],     # A connects to B, D
-            1: [0, 2, 4],  # B connects to A, C, E
-            2: [1],        # C connects to B
-            3: [0, 4],     # D connects to A, E
-            4: [1, 3],     # E connects to B, D
+            0: [1, 3],
+            1: [0, 2, 4],
+            2: [1],
+            3: [0, 4],
+            4: [1, 3],
         }
 
-        # Actions:
-        # 0-4  = reinforce one territory with both troops
-        # 5-14 = attack actions
         self.attack_actions = [
             (0, 1),  # A -> B
             (0, 3),  # A -> D
@@ -41,10 +36,21 @@ class MiniRiskEnv(gym.Env):
             (4, 3),  # E -> D
         ]
 
-        self.action_space = spaces.Discrete(15)
+        # Multi-part action:
+        # [reinforce_target, attack_choice, fortify_source, fortify_dest, fortify_amount_choice]
+        #
+        # reinforce_target: 0-4
+        # attack_choice: 0 = no attack, 1-10 = attack action
+        # fortify_source: 0-4
+        # fortify_dest: 0-4
+        # fortify_amount_choice:
+        #   0 = move 0
+        #   1 = move 1
+        #   2 = move 2
+        #   3 = move 3
+        #   4 = move all possible troops while leaving 1 behind
+        self.action_space = spaces.MultiDiscrete([5, 11, 5, 5, 5])
 
-        # Observation = owners + troop counts
-        # owners: 0 = player, 1 = enemy
         self.observation_space = spaces.Box(
             low=0,
             high=50,
@@ -58,14 +64,9 @@ class MiniRiskEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        # Initial board:
-        # A and D are player-owned.
-        # B, C, E are enemy-owned.
+        # 0 = player/PPO, 1 = enemy
         self.owners = np.array([0, 1, 1, 0, 1], dtype=np.int32)
-
-        # Starting troops
-        self.troops = np.array([4, 3, 3, 4, 3], dtype=np.int32)
-
+        self.troops = np.array([6, 2, 2, 6, 2], dtype=np.int32)
         self.turn = 0
 
         return self._get_obs(), {}
@@ -74,74 +75,99 @@ class MiniRiskEnv(gym.Env):
         return np.concatenate([self.owners, self.troops]).astype(np.int32)
 
     def _capture(self, attacker, defender, new_owner):
-        """
-        If attacker wins, defender territory gets:
-        attacking troops - defending troops.
-        Attacking territory is left with 1 troop.
-        """
         remaining_attackers = self.troops[attacker] - self.troops[defender]
 
         self.owners[defender] = new_owner
         self.troops[defender] = max(1, remaining_attackers)
         self.troops[attacker] = 1
 
-    def _reinforce_one(self, owner_id, territory, amount=2):
-        """
-        Reinforce one owned territory with all reinforcement troops.
-        """
+    def _reinforce(self, owner_id, territory, amount=2):
         if self.owners[territory] == owner_id:
             self.troops[territory] += amount
             return True
         return False
 
-    def _reinforce_split(self, owner_id):
-        """
-        Enemy helper: split 2 troops across two weakest owned territories,
-        or put both on one if only one territory is owned.
-        """
-        owned = np.where(self.owners == owner_id)[0]
+    def _can_fortify_between(self, owner_id, source, dest):
+        if source == dest:
+            return False
 
-        if len(owned) == 0:
-            return
+        if self.owners[source] != owner_id or self.owners[dest] != owner_id:
+            return False
 
-        if len(owned) == 1:
-            self.troops[owned[0]] += 2
-            return
+        # For now, fortify only between adjacent owned territories.
+        # This keeps it Risk-like but simple.
+        return dest in self.adjacency[source]
 
-        sorted_owned = owned[np.argsort(self.troops[owned])]
-        self.troops[sorted_owned[0]] += 1
-        self.troops[sorted_owned[1]] += 1
+    def _fortify(self, owner_id, source, dest, amount_choice):
+        if not self._can_fortify_between(owner_id, source, dest):
+            return False
 
-    def _player_action(self, action):
+        movable = self.troops[source] - 1
+
+        if movable <= 0:
+            return False
+
+        if amount_choice == 0:
+            amount = 0
+        elif amount_choice == 1:
+            amount = 1
+        elif amount_choice == 2:
+            amount = 2
+        elif amount_choice == 3:
+            amount = 3
+        else:
+            amount = movable
+
+        amount = min(amount, movable)
+
+        if amount <= 0:
+            return False
+
+        self.troops[source] -= amount
+        self.troops[dest] += amount
+        return True
+
+    def _player_turn(self, action):
         reward = -0.1
 
-        # Actions 0-4: reinforce territory with 2 troops
-        if 0 <= action <= 4:
-            success = self._reinforce_one(owner_id=0, territory=action, amount=2)
-            if success:
-                reward += 0.2
-            else:
-                reward -= 0.5
-            return reward
+        reinforce_target, attack_choice, fortify_source, fortify_dest, fortify_amount = action
 
-        # Actions 5-14: attack
-        attack_index = action - 5
-        attacker, defender = self.attack_actions[attack_index]
-
-        valid_attack = (
-            self.owners[attacker] == 0
-            and self.owners[defender] == 1
-            and defender in self.adjacency[attacker]
-        )
-
-        if valid_attack:
-            if self.troops[attacker] > self.troops[defender]:
-                self._capture(attacker, defender, new_owner=0)
-                reward += 3.0
-            else:
-                reward -= 1.0
+        # 1. Player reinforcement phase
+        if self._reinforce(owner_id=0, territory=int(reinforce_target), amount=2):
+            reward += 0.2
         else:
             reward -= 0.5
+
+        # 2. Player attack phase
+        if attack_choice == 0:
+            reward -= 0.1  # small penalty for skipping attack
+        else:
+            attack_index = int(attack_choice) - 1
+            attacker, defender = self.attack_actions[attack_index]
+
+            valid_attack = (
+                self.owners[attacker] == 0
+                and self.owners[defender] == 1
+                and defender in self.adjacency[attacker]
+            )
+
+            if valid_attack:
+                if self.troops[attacker] > self.troops[defender]:
+                    self._capture(attacker, defender, new_owner=0)
+                    reward += 3.0
+                else:
+                    reward -= 1.0
+            else:
+                reward -= 0.5
+
+        # 3. Player fortify/reorganize phase
+        if self._fortify(
+            owner_id=0,
+            source=int(fortify_source),
+            dest=int(fortify_dest),
+            amount_choice=int(fortify_amount),
+        ):
+            reward += 0.2
 
         return reward
 
@@ -158,22 +184,16 @@ class MiniRiskEnv(gym.Env):
 
         return options
 
-    def _enemy_turn(self):
-        penalty = 0.0
+    def _enemy_reinforce(self):
+        enemy_owned = np.where(self.owners == 1)[0]
 
-        # Enemy reinforces by 2 troops total each turn.
-        # It sometimes splits across weak territories.
-        if random.random() < 0.5:
-            self._reinforce_split(owner_id=1)
-        else:
-            enemy_owned = np.where(self.owners == 1)[0]
-            if len(enemy_owned) > 0:
-                weakest = enemy_owned[np.argmin(self.troops[enemy_owned])]
-                self.troops[weakest] += 2
+        if len(enemy_owned) == 0:
+            return
 
-        penalty -= 0.1
+        weakest = enemy_owned[np.argmin(self.troops[enemy_owned])]
+        self.troops[weakest] += 2
 
-        # Enemy may attack after reinforcing.
+    def _enemy_attack(self):
         possible_attacks = self._enemy_attack_options()
 
         strong_attacks = [
@@ -185,7 +205,54 @@ class MiniRiskEnv(gym.Env):
         if strong_attacks and random.random() < 0.35:
             attacker, defender = random.choice(strong_attacks)
             self._capture(attacker, defender, new_owner=1)
+            return True
+
+        return False
+
+    def _enemy_fortify(self):
+        enemy_owned = np.where(self.owners == 1)[0]
+
+        if len(enemy_owned) < 2:
+            return False
+
+        # Move troops from strongest enemy territory to weakest adjacent enemy territory.
+        strongest = enemy_owned[np.argmax(self.troops[enemy_owned])]
+
+        possible_dests = [
+            t for t in self.adjacency[strongest]
+            if self.owners[t] == 1
+        ]
+
+        if len(possible_dests) == 0:
+            return False
+
+        weakest_dest = min(possible_dests, key=lambda t: self.troops[t])
+
+        movable = self.troops[strongest] - 1
+        if movable <= 0:
+            return False
+
+        amount = min(2, movable)
+
+        self.troops[strongest] -= amount
+        self.troops[weakest_dest] += amount
+
+        return True
+
+    def _enemy_turn(self):
+        penalty = 0.0
+
+        # 1. Enemy reinforcement phase
+        self._enemy_reinforce()
+        penalty -= 0.1
+
+        # 2. Enemy attack phase
+        attacked = self._enemy_attack()
+        if attacked:
             penalty -= 3.0
+
+        # 3. Enemy fortify/reorganize phase
+        self._enemy_fortify()
 
         return penalty
 
@@ -194,25 +261,30 @@ class MiniRiskEnv(gym.Env):
         terminated = False
         truncated = False
 
-        reward = self._player_action(action)
+        reward = self._player_turn(action)
+        player_territories = np.sum(self.owners == 0)
+        enemy_territories = np.sum(self.owners == 1)
 
-        # Player wins if all territories are player-owned
+        reward += 0.2 * player_territories
+        reward -= 0.1 * enemy_territories
+
+        # Player win condition
         if np.all(self.owners == 0):
-            reward += 20
+            reward += 100
             terminated = True
 
-        # Enemy acts if player has not already won
+        # Enemy acts if player has not won
         if not terminated:
             reward += self._enemy_turn()
 
-        # Enemy wins if all territories are enemy-owned
+        # Enemy win condition
         if np.all(self.owners == 1):
             reward -= 20
             terminated = True
 
-        # Timeout penalty discourages stalling
+        # Timeout penalty
         if self.turn >= self.max_turns:
-            reward -= 10
+            reward -= 50
             truncated = True
 
         return self._get_obs(), reward, terminated, truncated, {}
@@ -229,9 +301,9 @@ class MiniRiskEnv(gym.Env):
             )
 
         print("\nMap:")
-        print(f"{self.territory_names[0]} --- {self.territory_names[1]} --- {self.territory_names[2]}")
+        print("A --- B --- C")
         print("|     |")
-        print(f"{self.territory_names[3]} --- {self.territory_names[4]}")
+        print("D --- E")
         print("================\n")
 
 
@@ -241,12 +313,12 @@ if __name__ == "__main__":
     obs, _ = env.reset()
     done = False
 
-    print("Starting MiniRisk v3 simulation...")
+    print("Starting MiniRisk v4 simulation...")
 
     while not done:
         env.render()
 
-        action = random.randint(0, env.action_space.n - 1)
+        action = env.action_space.sample()
         obs, reward, terminated, truncated, info = env.step(action)
 
         print(f"Action Taken: {action} | Reward: {reward}")

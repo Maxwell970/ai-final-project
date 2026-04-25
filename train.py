@@ -24,7 +24,7 @@ def train_model():
         device="cpu",
     )
 
-    model.learn(total_timesteps=125_000)
+    model.learn(total_timesteps=100_000)
 
     model.save("ppo_minirisk")
 
@@ -46,9 +46,9 @@ def test_model():
         env.render()
 
         action, _ = model.predict(obs, deterministic=True)
-        obs, reward, terminated, truncated, info = env.step(int(action))
+        obs, reward, terminated, truncated, info = env.step(action)
 
-        print(f"Action Taken: {int(action)} | Reward: {reward}")
+        print(f"Action Taken: {action} | Reward: {reward}")
 
         total_reward += reward
         turns += 1

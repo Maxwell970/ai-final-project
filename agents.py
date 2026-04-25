@@ -1,10 +1,10 @@
-import random
 import numpy as np
 
 
 class RandomAgent:
     """
-    Agent that chooses random actions from the environment action space.
+    Random baseline agent for MiniRisk v4.
+    Works with MultiDiscrete action space.
     """
 
     def __init__(self, action_space):
@@ -16,21 +16,30 @@ class RandomAgent:
 
 class GreedyAgent:
     """
-    Rule-based baseline for MiniRisk v3.
+    Greedy rule-based baseline for MiniRisk v4.
 
-    Observation format:
-    obs = [owners for A-E, troops for A-E]
+    Action format:
+    [reinforce_target, attack_choice, fortify_source, fortify_dest, fortify_amount]
 
-    Actions:
-    0-4 = reinforce territory A-E
-    5-14 = attack actions defined in env.attack_actions
+    reinforce_target:
+        0-4 = A-E
+
+    attack_choice:
+        0 = no attack
+        1-10 = attack actions
+
+    fortify_amount:
+        0 = move none
+        1 = move 1
+        2 = move 2
+        3 = move 3
+        4 = move all possible while leaving 1 behind
     """
 
-    def choose_action(self, obs):
-        owners = obs[:5]
-        troops = obs[5:]
+    def __init__(self):
+        self.num_territories = 5
 
-        attack_actions = [
+        self.attack_actions = [
             (0, 1),  # A -> B
             (0, 3),  # A -> D
             (1, 0),  # B -> A
@@ -43,32 +52,78 @@ class GreedyAgent:
             (4, 3),  # E -> D
         ]
 
-        # First, attack if a player-owned territory can capture an enemy territory
-        best_attack = None
-        best_margin = -999
+        self.adjacency = {
+            0: [1, 3],
+            1: [0, 2, 4],
+            2: [1],
+            3: [0, 4],
+            4: [1, 3],
+        }
 
-        for i, (attacker, defender) in enumerate(attack_actions):
-            if owners[attacker] == 0 and owners[defender] == 1:
-                margin = troops[attacker] - troops[defender]
-                if margin > 0 and margin > best_margin:
-                    best_margin = margin
-                    best_attack = 5 + i
+    def choose_action(self, obs):
+        owners = obs[:5]
+        troops = obs[5:]
 
-        if best_attack is not None:
-            return best_attack
-
-        # Otherwise reinforce weakest player-owned territory
+        # 1. Reinforce weakest player-owned territory
         player_owned = np.where(owners == 0)[0]
 
-        if len(player_owned) > 0:
-            weakest = player_owned[np.argmin(troops[player_owned])]
-            return int(weakest)
+        if len(player_owned) == 0:
+            return np.array([0, 0, 0, 0, 0], dtype=np.int64)
 
-        # Fallback
-        return random.randint(0, 14)
+        reinforce_target = int(player_owned[np.argmin(troops[player_owned])])
+
+        # 2. Choose best valid attack
+        attack_choice = 0
+        best_margin = -999
+
+        for i, (attacker, defender) in enumerate(self.attack_actions):
+            valid_attack = owners[attacker] == 0 and owners[defender] == 1
+
+            if valid_attack:
+                margin = troops[attacker] - troops[defender]
+
+                if margin > 0 and margin > best_margin:
+                    best_margin = margin
+                    attack_choice = i + 1
+
+        # 3. Fortify: move troops from strongest owned territory to weakest adjacent owned territory
+        fortify_source = 0
+        fortify_dest = 0
+        fortify_amount = 0
+
+        if len(player_owned) >= 2:
+            strongest = int(player_owned[np.argmax(troops[player_owned])])
+
+            adjacent_owned = [
+                t for t in self.adjacency[strongest]
+                if owners[t] == 0
+            ]
+
+            if len(adjacent_owned) > 0 and troops[strongest] > 2:
+                weakest_adjacent = int(min(adjacent_owned, key=lambda t: troops[t]))
+
+                fortify_source = strongest
+                fortify_dest = weakest_adjacent
+                fortify_amount = 2
+
+        return np.array(
+            [
+                reinforce_target,
+                attack_choice,
+                fortify_source,
+                fortify_dest,
+                fortify_amount,
+            ],
+            dtype=np.int64,
+        )
 
 
 def run_agent_episode(env, agent, render=True):
+    """
+    Runs one full episode using the provided agent.
+    Returns total reward and number of turns.
+    """
+
     obs, _ = env.reset()
     done = False
     total_reward = 0

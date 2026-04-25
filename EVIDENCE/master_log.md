@@ -48,3 +48,5 @@ now changing the game rules:
 5. Enemy attack action
 6. Check win
 
+changed rules again to allow for troops to be moved around after
+also updated rewards to incentivize having control of territories and maintaining control

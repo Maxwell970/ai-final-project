@@ -25,9 +25,9 @@ def run_episode(env, agent_type, model=None):
         agent = None
 
     while not done:
+        # PPO returns MultiDiscrete action array
         if agent_type == "ppo":
             action, _ = model.predict(obs, deterministic=True)
-            action = int(action)
         else:
             action = agent.choose_action(obs)
 
@@ -37,7 +37,7 @@ def run_episode(env, agent_type, model=None):
         turns += 1
         done = terminated or truncated
 
-        # Only count as a win if the player owns all territories
+        # Win = player owns all territories
         if terminated and np.all(env.owners == 0):
             won = True
 
@@ -75,25 +75,31 @@ def plot_results(results):
     turns = [r["avg_turns"] for r in results]
     win_rates = [r["win_rate"] * 100 for r in results]
 
-    plt.figure()
+    # Reward chart
+    plt.figure(figsize=(8, 5))
     plt.bar(agents, rewards)
     plt.title("Average Reward by Agent")
     plt.ylabel("Average Reward")
+    plt.tight_layout()
     plt.savefig("avg_reward_by_agent.png")
     plt.close()
 
-    plt.figure()
+    # Turns chart
+    plt.figure(figsize=(8, 5))
     plt.bar(agents, turns)
     plt.title("Average Turns by Agent")
     plt.ylabel("Average Turns")
+    plt.tight_layout()
     plt.savefig("avg_turns_by_agent.png")
     plt.close()
 
-    plt.figure()
+    # Win rate chart
+    plt.figure(figsize=(8, 5))
     plt.bar(agents, win_rates)
     plt.title("Win Rate by Agent")
     plt.ylabel("Win Rate (%)")
     plt.ylim(0, 100)
+    plt.tight_layout()
     plt.savefig("win_rate_by_agent.png")
     plt.close()
 
@@ -102,6 +108,7 @@ def main():
     num_games = 100
 
     results = []
+
     for agent_type in ["random", "greedy", "ppo"]:
         print(f"Evaluating {agent_type} agent...")
         result = evaluate_agent(agent_type, num_games=num_games)
@@ -113,9 +120,9 @@ def main():
 
     for r in results:
         print(
-            f"{r['agent']:<10} "
-            f"{r['avg_reward']:<15.2f} "
-            f"{r['avg_turns']:<15.2f} "
+            f"{r['agent']:<10}"
+            f"{r['avg_reward']:<15.2f}"
+            f"{r['avg_turns']:<15.2f}"
             f"{r['win_rate'] * 100:<15.2f}%"
         )
 
