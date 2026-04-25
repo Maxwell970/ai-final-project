@@ -50,3 +50,8 @@ now changing the game rules:
 
 changed rules again to allow for troops to be moved around after
 also updated rewards to incentivize having control of territories and maintaining control
+
+
+that worked. now i am changing it to 14 territories with a new map. also random territory starts, and continent + territory control bonuses
+
+things maybe to do in future: let the attacks go on runs, so like attacking and then continuing from that newly conquered territory, adding in randomness to troop loss, changing visualize

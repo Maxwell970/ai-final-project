@@ -16,15 +16,15 @@ def train_model():
         "MlpPolicy",
         env,
         verbose=1,
-        learning_rate=0.0005,
-        n_steps=128,
-        batch_size=64,
-        gamma=0.97,
-        ent_coef=0.05,   # encourages exploration
+        learning_rate=0.0003,
+        n_steps=256,
+        batch_size=128,
+        gamma=0.99,
+        ent_coef=0.08,
         device="cpu",
     )
 
-    model.learn(total_timesteps=100_000)
+    model.learn(total_timesteps=500_000)
 
     model.save("ppo_minirisk")
 
@@ -46,6 +46,7 @@ def test_model():
         env.render()
 
         action, _ = model.predict(obs, deterministic=True)
+
         obs, reward, terminated, truncated, info = env.step(action)
 
         print(f"Action Taken: {action} | Reward: {reward}")

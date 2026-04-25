@@ -3,7 +3,7 @@ import numpy as np
 
 class RandomAgent:
     """
-    Random baseline agent for MiniRisk v4.
+    Random baseline agent for MiniRisk v5.
     Works with MultiDiscrete action space.
     """
 
@@ -16,95 +16,63 @@ class RandomAgent:
 
 class GreedyAgent:
     """
-    Greedy rule-based baseline for MiniRisk v4.
+    Greedy rule-based baseline for MiniRisk v5.
+
+    Observation format:
+    obs = [owners A-N, troops A-N]
 
     Action format:
     [reinforce_target, attack_choice, fortify_source, fortify_dest, fortify_amount]
-
-    reinforce_target:
-        0-4 = A-E
-
-    attack_choice:
-        0 = no attack
-        1-10 = attack actions
-
-    fortify_amount:
-        0 = move none
-        1 = move 1
-        2 = move 2
-        3 = move 3
-        4 = move all possible while leaving 1 behind
     """
 
     def __init__(self):
-        self.num_territories = 5
-
-        self.attack_actions = [
-            (0, 1),  # A -> B
-            (0, 3),  # A -> D
-            (1, 0),  # B -> A
-            (1, 2),  # B -> C
-            (1, 4),  # B -> E
-            (2, 1),  # C -> B
-            (3, 0),  # D -> A
-            (3, 4),  # D -> E
-            (4, 1),  # E -> B
-            (4, 3),  # E -> D
-        ]
+        self.num_territories = 14
 
         self.adjacency = {
-            0: [1, 3],
-            1: [0, 2, 4],
-            2: [1],
-            3: [0, 4],
-            4: [1, 3],
+            0: [1, 2],          # A
+            1: [0, 3, 6],       # B
+            2: [0, 3, 4],       # C
+            3: [1, 2, 11],      # D
+            4: [2, 5],          # E
+            5: [4],             # F
+            6: [1, 7, 9],       # G
+            7: [6, 8, 10],      # H
+            8: [7],             # I
+            9: [6, 10, 11],     # J
+            10: [7, 9, 12],     # K
+            11: [3, 9, 12, 13], # L
+            12: [10, 11],       # M
+            13: [11],           # N
+        }
+
+        self.attack_actions = []
+        for attacker in range(self.num_territories):
+            for defender in self.adjacency[attacker]:
+                self.attack_actions.append((attacker, defender))
+
+        self.continents = {
+            "Continent 1": [0, 1, 2, 3],
+            "Continent 2": [6, 7, 8, 9, 10],
+            "Continent 3": [4, 5],
+            "Continent 4": [11, 12, 13],
         }
 
     def choose_action(self, obs):
-        owners = obs[:5]
-        troops = obs[5:]
+        owners = obs[: self.num_territories]
+        troops = obs[self.num_territories :]
 
-        # 1. Reinforce weakest player-owned territory
         player_owned = np.where(owners == 0)[0]
 
         if len(player_owned) == 0:
             return np.array([0, 0, 0, 0, 0], dtype=np.int64)
 
-        reinforce_target = int(player_owned[np.argmin(troops[player_owned])])
-
-        # 2. Choose best valid attack
-        attack_choice = 0
-        best_margin = -999
-
-        for i, (attacker, defender) in enumerate(self.attack_actions):
-            valid_attack = owners[attacker] == 0 and owners[defender] == 1
-
-            if valid_attack:
-                margin = troops[attacker] - troops[defender]
-
-                if margin > 0 and margin > best_margin:
-                    best_margin = margin
-                    attack_choice = i + 1
-
-        # 3. Fortify: move troops from strongest owned territory to weakest adjacent owned territory
-        fortify_source = 0
-        fortify_dest = 0
-        fortify_amount = 0
-
-        if len(player_owned) >= 2:
-            strongest = int(player_owned[np.argmax(troops[player_owned])])
-
-            adjacent_owned = [
-                t for t in self.adjacency[strongest]
-                if owners[t] == 0
-            ]
-
-            if len(adjacent_owned) > 0 and troops[strongest] > 2:
-                weakest_adjacent = int(min(adjacent_owned, key=lambda t: troops[t]))
-
-                fortify_source = strongest
-                fortify_dest = weakest_adjacent
-                fortify_amount = 2
+        reinforce_target = self._choose_reinforce_target(owners, troops, player_owned)
+        attack_choice = self._choose_attack(owners, troops)
+        fortify_source, fortify_dest, fortify_amount = self._choose_fortify(
+            owners,
+            troops,
+            player_owned,
+        )
 
         return np.array(
             [
@@ -116,6 +84,88 @@ class GreedyAgent:
             ],
             dtype=np.int64,
         )
+
+    def _choose_reinforce_target(self, owners, troops, player_owned):
+        """
+        Reinforce the weakest player-owned territory that borders an enemy.
+        If none border an enemy, reinforce the weakest owned territory.
+        """
+        border_territories = []
+
+        for territory in player_owned:
+            for neighbor in self.adjacency[int(territory)]:
+                if owners[neighbor] == 1:
+                    border_territories.append(int(territory))
+                    break
+
+        if border_territories:
+            return int(min(border_territories, key=lambda t: troops[t]))
+
+        return int(player_owned[np.argmin(troops[player_owned])])
+
+    def _choose_attack(self, owners, troops):
+        """
+        Attack with the best positive troop advantage.
+        Prioritize captures that complete or help continents indirectly through margin.
+        """
+        best_attack_choice = 0
+        best_score = -999
+
+        for i, (attacker, defender) in enumerate(self.attack_actions):
+            if owners[attacker] == 0 and owners[defender] == 1:
+                margin = troops[attacker] - troops[defender]
+
+                if margin > 0:
+                    score = margin
+
+                    # Slightly prefer attacking territories in small continents
+                    # because they are easier to complete.
+                    for continent_territories in self.continents.values():
+                        if defender in continent_territories:
+                            owned_in_continent = sum(
+                                owners[t] == 0 for t in continent_territories
+                            )
+                            score += owned_in_continent * 0.25
+
+                    if score > best_score:
+                        best_score = score
+                        best_attack_choice = i + 1
+
+        return int(best_attack_choice)
+
+    def _choose_fortify(self, owners, troops, player_owned):
+        """
+        Move troops from strongest interior/frontier territory to weakest adjacent border territory.
+        """
+        fortify_source = 0
+        fortify_dest = 0
+        fortify_amount = 0
+
+        if len(player_owned) < 2:
+            return fortify_source, fortify_dest, fortify_amount
+
+        border_territories = []
+
+        for territory in player_owned:
+            territory = int(territory)
+            if any(owners[n] == 1 for n in self.adjacency[territory]):
+                border_territories.append(territory)
+
+        if not border_territories:
+            return fortify_source, fortify_dest, fortify_amount
+
+        strongest_owned = int(player_owned[np.argmax(troops[player_owned])])
+        weakest_border = int(min(border_territories, key=lambda t: troops[t]))
+
+        if strongest_owned == weakest_border:
+            return fortify_source, fortify_dest, fortify_amount
+
+        if weakest_border in self.adjacency[strongest_owned] and troops[strongest_owned] > 2:
+            fortify_source = strongest_owned
+            fortify_dest = weakest_border
+            fortify_amount = 2
+
+        return int(fortify_source), int(fortify_dest), int(fortify_amount)
 
 
 def run_agent_episode(env, agent, render=True):
