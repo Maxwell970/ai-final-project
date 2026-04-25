@@ -3,28 +3,30 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 from stable_baselines3 import PPO
 from stable_baselines3.common.env_checker import check_env
+from stable_baselines3.common.env_util import make_vec_env
 
 from env import MiniRiskEnv
 
 
 def train_model():
-    env = MiniRiskEnv()
+    check_env(MiniRiskEnv(), warn=True)
 
-    check_env(env, warn=True)
+    # Uses 8 environments at once to speed up training
+    env = make_vec_env(MiniRiskEnv, n_envs=8)
 
     model = PPO(
         "MlpPolicy",
         env,
         verbose=1,
         learning_rate=0.0003,
-        n_steps=256,
-        batch_size=128,
+        n_steps=512,
+        batch_size=256,
         gamma=0.99,
-        ent_coef=0.08,
+        ent_coef=0.03,
         device="cpu",
     )
 
-    model.learn(total_timesteps=500_000)
+    model.learn(total_timesteps=100_000)
 
     model.save("ppo_minirisk")
 
@@ -46,10 +48,12 @@ def test_model():
         env.render()
 
         action, _ = model.predict(obs, deterministic=True)
-
         obs, reward, terminated, truncated, info = env.step(action)
 
-        print(f"Action Taken: {action} | Reward: {reward}")
+        reinforce_target = int(action[0])
+        attack_choice = int(action[1])
+
+        print(f"Action Taken: {action} | Reinforce: {env.territory_names[reinforce_target]} | Attack Choice: {attack_choice} | Reward: {reward}")
 
         total_reward += reward
         turns += 1

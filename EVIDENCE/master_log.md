@@ -55,3 +55,15 @@ also updated rewards to incentivize having control of territories and maintainin
 that worked. now i am changing it to 14 territories with a new map. also random territory starts, and continent + territory control bonuses
 
 things maybe to do in future: let the attacks go on runs, so like attacking and then continuing from that newly conquered territory, adding in randomness to troop loss, changing visualize
+
+for 14 territories, learning rate was slightly decreased, more training, keeping same entropy for encouraging exploration
+
+ppo now performing poorly even with 500,000 training iterations. will try to change rewards to incentivize capturing entire continents for the troop bonus
+
+now also trying balanced start that is the same each time
+
+going to try removing the ability to fortify since action space was likely too big
+
+to speed up training, simultaneously run 8 instances of the model?
+
+maybe logic is wrong with counting troops after attack
