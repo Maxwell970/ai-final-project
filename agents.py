@@ -4,8 +4,7 @@ import numpy as np
 
 class RandomAgent:
     """
-    Agent that chooses actions randomly.
-    This is useful as a basic baseline.
+    Agent that chooses random actions from the environment action space.
     """
 
     def __init__(self, action_space):
@@ -17,42 +16,59 @@ class RandomAgent:
 
 class GreedyAgent:
     """
-    Simple rule-based Risk agent.
+    Rule-based baseline for MiniRisk v3.
 
     Observation format:
-    obs = [owner_A, owner_B, owner_C, troops_A, troops_B, troops_C]
+    obs = [owners for A-E, troops for A-E]
 
     Actions:
-    0 = attack B from A
-    1 = attack C from B
-    2 = reinforce
+    0-4 = reinforce territory A-E
+    5-14 = attack actions defined in env.attack_actions
     """
 
     def choose_action(self, obs):
-        owners = obs[:3]
-        troops = obs[3:]
+        owners = obs[:5]
+        troops = obs[5:]
 
-        owner_A, owner_B, owner_C = owners
-        troops_A, troops_B, troops_C = troops
+        attack_actions = [
+            (0, 1),  # A -> B
+            (0, 3),  # A -> D
+            (1, 0),  # B -> A
+            (1, 2),  # B -> C
+            (1, 4),  # B -> E
+            (2, 1),  # C -> B
+            (3, 0),  # D -> A
+            (3, 4),  # D -> E
+            (4, 1),  # E -> B
+            (4, 3),  # E -> D
+        ]
 
-        # If Player owns A and Enemy owns B, attack B if likely to win
-        if owner_A == 0 and owner_B == 1 and troops_A > troops_B:
-            return 0
+        # First, attack if a player-owned territory can capture an enemy territory
+        best_attack = None
+        best_margin = -999
 
-        # If Player owns B and Enemy owns C, attack C if likely to win
-        if owner_B == 0 and owner_C == 1 and troops_B > troops_C:
-            return 1
+        for i, (attacker, defender) in enumerate(attack_actions):
+            if owners[attacker] == 0 and owners[defender] == 1:
+                margin = troops[attacker] - troops[defender]
+                if margin > 0 and margin > best_margin:
+                    best_margin = margin
+                    best_attack = 5 + i
 
-        # Otherwise reinforce
-        return 2
+        if best_attack is not None:
+            return best_attack
+
+        # Otherwise reinforce weakest player-owned territory
+        player_owned = np.where(owners == 0)[0]
+
+        if len(player_owned) > 0:
+            weakest = player_owned[np.argmin(troops[player_owned])]
+            return int(weakest)
+
+        # Fallback
+        return random.randint(0, 14)
 
 
 def run_agent_episode(env, agent, render=True):
-    """
-    Runs one full episode using the provided agent.
-    Returns total reward and number of turns.
-    """
-
     obs, _ = env.reset()
     done = False
     total_reward = 0
