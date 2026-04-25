@@ -36,5 +36,15 @@ now, the enemy has 25% to attack if they have more troops
 
 greedy performs well in very simple three territories, either attack or reinforce
 
+this was fixed by using an entropy term of 0.05 to encourage exploration making the ppo as efficient as the greedy algorithm
 
+
+now changing the game rules:
+
+1. Player reinforcement phase (+2 troops)
+2. Player attack action
+3. Check win
+4. Enemy reinforcement phase (+2 troops)
+5. Enemy attack action
+6. Check win
 

@@ -4,6 +4,7 @@ import numpy as np
 import random
 
 
+
 class MiniRiskEnv(gym.Env):
     def __init__(self):
         super().__init__()
