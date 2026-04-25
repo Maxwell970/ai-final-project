@@ -1,6 +1,19 @@
+# Python
 __pycache__/
-*.pyc
+*.py[cod]
+*$py.class
+
+# Virtual environments
 .venv/
+venv/
 env/
-*.zip
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Models
 ppo_minirisk.zip
+
+# OS / editor
+.DS_Store
+.vscode/
