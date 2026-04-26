@@ -11,32 +11,28 @@ MAX_TURNS = 75
 STARTING_TROOPS = 3
 ENEMY_ATTACK_PROBABILITY = 0.25
 
-BASE_TURN_REWARD = -0.05
+# Small penalty each turn to encourage efficient wins
+BASE_TURN_REWARD = -0.1
 
-VALID_REINFORCE_REWARD = 0.2
-INVALID_REINFORCE_PENALTY = -1.0
+# Reinforcement legality
+VALID_REINFORCE_REWARD = 0.1
+INVALID_REINFORCE_PENALTY = -2.0
 
-NO_ATTACK_REWARD = -0.05
-SKIP_VALID_ATTACK_PENALTY = -1.0
-VALID_ATTACK_REWARD = 8.0
-PER_TERRITORY_CAPTURE_REWARD = 3.0
-INVALID_ATTACK_PENALTY = -1.0
+# Attack behavior
+NO_ATTACK_REWARD = 0.0
+SKIP_VALID_ATTACK_PENALTY = -0.5
+VALID_ATTACK_REWARD = 2.0
+PER_TERRITORY_CAPTURE_REWARD = 5.0
+INVALID_ATTACK_PENALTY = -2.0
 
-PLAYER_TERRITORY_REWARD = 0.1
-ENEMY_TERRITORY_PENALTY = -0.1
+# Strategic objectives
+NEW_PLAYER_CONTINENT_REWARD = 10.0
+NEW_ENEMY_CONTINENT_PENALTY = -10.0
 
-NEW_PLAYER_CONTINENT_REWARD = 8.0
-NEW_ENEMY_CONTINENT_PENALTY = -6.0
+# Opponent progress
+ENEMY_SUCCESSFUL_ATTACK_PENALTY = -5.0
 
-PLAYER_CONTINENT_HOLD_REWARD = 0.05
-ENEMY_CONTINENT_HOLD_PENALTY = -0.05
-
-HOARDING_MULTIPLIER = 3.0
-HOARDING_PENALTY = -1.0
-
-ENEMY_REINFORCE_PENALTY = -0.05
-ENEMY_SUCCESSFUL_ATTACK_PENALTY = -4.0
-
+# Terminal outcomes
 WIN_REWARD = 100
 LOSS_PENALTY = -100
 TIMEOUT_PENALTY = -50
@@ -87,11 +83,6 @@ class MiniRiskEnv(gym.Env):
 
         self.num_attack_actions = len(self.attack_actions)
 
-        # Action format:
-        # [reinforce_target, attack_choice]
-        #
-        # reinforce_target: 0-13
-        # attack_choice: 0 = no attack, 1-num_attack_actions = attack action
         self.action_space = spaces.MultiDiscrete(
             [self.num_territories, self.num_attack_actions + 1]
         )
@@ -108,15 +99,26 @@ class MiniRiskEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        # Fixed balanced start:
-        # Player owns A, B, E, I, J, K, N
-        # Enemy owns C, D, F, G, H, L, M
-        self.owners = np.array(
-            [0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0],
+        # -----------------------------------------
+        # RANDOM BALANCED START
+        # 7 player territories / 7 enemy territories
+        # -----------------------------------------
+        territories = np.arange(self.num_territories)
+
+        np.random.shuffle(territories)
+
+        self.owners = np.ones(self.num_territories, dtype=np.int32)
+
+        # First 7 shuffled territories go to player
+        self.owners[territories[:7]] = 0
+
+        # Everyone starts with same troops
+        self.troops = np.full(
+            self.num_territories,
+            STARTING_TROOPS,
             dtype=np.int32,
         )
 
-        self.troops = np.full(self.num_territories, STARTING_TROOPS, dtype=np.int32)
         self.turn = 0
 
         # Debug counters
@@ -136,22 +138,12 @@ class MiniRiskEnv(gym.Env):
     # --------------------------------------------------
 
     def action_masks(self):
-        """
-        MaskablePPO uses this to avoid illegal actions.
-
-        For MultiDiscrete([14, num_attack_actions + 1]), the mask is flattened:
-        first 14 entries = legal reinforce targets
-        remaining entries = legal attack choices
-        """
-
         reinforce_mask = np.zeros(self.num_territories, dtype=bool)
 
         for territory in range(self.num_territories):
             reinforce_mask[territory] = self.owners[territory] == 0
 
         attack_mask = np.zeros(self.num_attack_actions + 1, dtype=bool)
-
-        # Always allow no attack
         attack_mask[0] = True
 
         for i, (attacker, defender) in enumerate(self.attack_actions):
@@ -351,7 +343,6 @@ class MiniRiskEnv(gym.Env):
         reward = 0.0
 
         self._enemy_reinforce()
-        reward += ENEMY_REINFORCE_PENALTY
 
         if self._enemy_attack():
             reward += ENEMY_SUCCESSFUL_ATTACK_PENALTY
@@ -372,26 +363,11 @@ class MiniRiskEnv(gym.Env):
 
         reward = self._player_turn(action)
 
-        player_territories = int(np.sum(self.owners == 0))
-        enemy_territories = int(np.sum(self.owners == 1))
-
-        reward += PLAYER_TERRITORY_REWARD * player_territories
-        reward += ENEMY_TERRITORY_PENALTY * enemy_territories
-
         new_player_cont = self._count_controlled_continents(0)
         new_enemy_cont = self._count_controlled_continents(1)
 
         reward += NEW_PLAYER_CONTINENT_REWARD * (new_player_cont - prev_player_cont)
         reward += NEW_ENEMY_CONTINENT_PENALTY * (new_enemy_cont - prev_enemy_cont)
-
-        reward += PLAYER_CONTINENT_HOLD_REWARD * self._continent_bonus_total(0)
-        reward += ENEMY_CONTINENT_HOLD_PENALTY * self._continent_bonus_total(1)
-
-        player_troops = self.troops[self.owners == 0]
-
-        if len(player_troops) > 0:
-            if np.max(player_troops) > np.mean(player_troops) * HOARDING_MULTIPLIER:
-                reward += HOARDING_PENALTY
 
         if np.all(self.owners == 0):
             reward += WIN_REWARD
