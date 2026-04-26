@@ -47,10 +47,12 @@ The PPO agent was compared against two baselines. A random agent and a greedy ag
 
 ## Generated Charts
 
-![Reward by Agent](EVIDENCE\avg_reward_by_agent_4-26.png)
 
+### Reward by Agent
 <img src="EVIDENCE\avg_reward_by_agent_4-26.png" width="650">
 
-![Win Rate by Agent](EVIDENCE\win_rate_by_agent_4-26.png)
+### Win Rate by Agent
+<img src="EVIDENCE\win_rate_by_agent_4-26.png" width="650">
 
-![PPO Training Reward Curve](EVIDENCE\training_reward_curve_4-26.png)
+### PPO Training Reward Curve
+<img src="EVIDENCE\training_reward_curve_4-26.png" width="650">
