@@ -16,6 +16,7 @@ def run_episode(env, agent_type, model=None):
     total_reward = 0
     turns = 0
     won = False
+    final_info = {}
 
     if agent_type == "random":
         agent = RandomAgent(env.action_space)
@@ -25,7 +26,6 @@ def run_episode(env, agent_type, model=None):
         agent = None
 
     while not done:
-        # PPO returns MultiDiscrete action array
         if agent_type == "ppo":
             action, _ = model.predict(obs, deterministic=True)
         else:
@@ -35,13 +35,14 @@ def run_episode(env, agent_type, model=None):
 
         total_reward += reward
         turns += 1
+        final_info = info
+
         done = terminated or truncated
 
-        # Win = player owns all territories
         if terminated and np.all(env.owners == 0):
             won = True
 
-    return total_reward, turns, won
+    return total_reward, turns, won, final_info
 
 
 def evaluate_agent(agent_type, num_games=100):
@@ -49,23 +50,69 @@ def evaluate_agent(agent_type, num_games=100):
     turns = []
     wins = []
 
+    valid_reinforces = []
+    invalid_reinforces = []
+
+    successful_attacks = []
+    invalid_attacks = []
+    total_attacks_attempted = []
+    skipped_valid_attacks = []
+
     model = None
     if agent_type == "ppo":
         model = PPO.load("ppo_minirisk")
 
     for _ in range(num_games):
         env = MiniRiskEnv()
-        total_reward, num_turns, won = run_episode(env, agent_type, model)
+
+        total_reward, num_turns, won, info = run_episode(
+            env,
+            agent_type,
+            model,
+        )
 
         rewards.append(total_reward)
         turns.append(num_turns)
         wins.append(won)
+
+        valid_reinforces.append(info["valid_reinforces"])
+        invalid_reinforces.append(info["invalid_reinforces"])
+
+        successful_attacks.append(info["successful_attacks"])
+        invalid_attacks.append(info["invalid_attacks"])
+        total_attacks_attempted.append(info["total_attacks_attempted"])
+        skipped_valid_attacks.append(info["skipped_valid_attacks"])
+
+    total_valid_reinf = np.sum(valid_reinforces)
+    total_invalid_reinf = np.sum(invalid_reinforces)
+
+    total_success_attacks = np.sum(successful_attacks)
+    total_invalid_attacks = np.sum(invalid_attacks)
+    total_attack_attempts = np.sum(total_attacks_attempted)
+
+    reinforce_valid_pct = (
+        100 * total_valid_reinf /
+        max(1, total_valid_reinf + total_invalid_reinf)
+    )
+
+    attack_success_pct = (
+        100 * total_success_attacks /
+        max(1, total_attack_attempts)
+    )
 
     return {
         "agent": agent_type,
         "avg_reward": np.mean(rewards),
         "avg_turns": np.mean(turns),
         "win_rate": np.mean(wins),
+
+        "valid_reinforce_pct": reinforce_valid_pct,
+        "avg_invalid_reinforces": np.mean(invalid_reinforces),
+
+        "attack_success_pct": attack_success_pct,
+        "avg_invalid_attacks": np.mean(invalid_attacks),
+
+        "avg_skipped_valid_attacks": np.mean(skipped_valid_attacks),
     }
 
 
@@ -75,7 +122,6 @@ def plot_results(results):
     turns = [r["avg_turns"] for r in results]
     win_rates = [r["win_rate"] * 100 for r in results]
 
-    # Reward chart
     plt.figure(figsize=(8, 5))
     plt.bar(agents, rewards)
     plt.title("Average Reward by Agent")
@@ -84,7 +130,6 @@ def plot_results(results):
     plt.savefig("avg_reward_by_agent.png")
     plt.close()
 
-    # Turns chart
     plt.figure(figsize=(8, 5))
     plt.bar(agents, turns)
     plt.title("Average Turns by Agent")
@@ -93,7 +138,6 @@ def plot_results(results):
     plt.savefig("avg_turns_by_agent.png")
     plt.close()
 
-    # Win rate chart
     plt.figure(figsize=(8, 5))
     plt.bar(agents, win_rates)
     plt.title("Win Rate by Agent")
@@ -106,7 +150,6 @@ def plot_results(results):
 
 def main():
     num_games = 100
-
     results = []
 
     for agent_type in ["random", "greedy", "ppo"]:
@@ -115,15 +158,31 @@ def main():
         results.append(result)
 
     print("\n=== Evaluation Results ===")
-    print(f"{'Agent':<10} {'Avg Reward':<15} {'Avg Turns':<15} {'Win Rate':<15}")
-    print("-" * 65)
+
+    header = (
+        f"{'Agent':<10}"
+        f"{'Win %':<10}"
+        f"{'Avg Rwd':<12}"
+        f"{'Turns':<10}"
+        f"{'Valid Rein%':<14}"
+        f"{'Atk Success%':<15}"
+        f"{'Bad Atks':<12}"
+        f"{'Skip Good Atk':<14}"
+    )
+
+    print(header)
+    print("-" * len(header))
 
     for r in results:
         print(
             f"{r['agent']:<10}"
-            f"{r['avg_reward']:<15.2f}"
-            f"{r['avg_turns']:<15.2f}"
-            f"{r['win_rate'] * 100:<15.2f}%"
+            f"{r['win_rate'] * 100:<10.2f}"
+            f"{r['avg_reward']:<12.2f}"
+            f"{r['avg_turns']:<10.2f}"
+            f"{r['valid_reinforce_pct']:<14.2f}"
+            f"{r['attack_success_pct']:<15.2f}"
+            f"{r['avg_invalid_attacks']:<12.2f}"
+            f"{r['avg_skipped_valid_attacks']:<14.2f}"
         )
 
     plot_results(results)

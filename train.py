@@ -26,7 +26,7 @@ def train_model():
         device="cpu",
     )
 
-    model.learn(total_timesteps=100_000)
+    model.learn(total_timesteps=150_000)
 
     model.save("ppo_minirisk")
 

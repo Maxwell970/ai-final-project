@@ -67,3 +67,6 @@ going to try removing the ability to fortify since action space was likely too b
 to speed up training, simultaneously run 8 instances of the model?
 
 maybe logic is wrong with counting troops after attack
+
+main issue now is ppo model choosing invalid attacks and invalid reinforcements even after simplifying action space
+
