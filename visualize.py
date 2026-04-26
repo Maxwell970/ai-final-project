@@ -1,7 +1,10 @@
 import pygame
 import time
 import numpy as np
-from stable_baselines3 import PPO
+
+from sb3_contrib import MaskablePPO
+from sb3_contrib.common.maskable.utils import get_action_masks
+
 from env import MiniRiskEnv
 
 WIDTH, HEIGHT = 1400, 850
@@ -16,36 +19,17 @@ CONTINENT_BORDER = (130, 205, 80)
 NAMES = list("ABCDEFGHIJKLMN")
 
 POSITIONS = {
-    0: (160, 150),   # A
-    1: (360, 150),   # B
-    2: (160, 335),   # C
-    3: (360, 335),   # D
-
-    4: (160, 570),   # E
-    5: (160, 735),   # F
-
-    6: (690, 150),   # G
-    7: (880, 150),   # H
-    8: (1070, 150),  # I
-    9: (690, 335),   # J
-    10: (880, 335),  # K
-
-    11: (690, 570),  # L
-    12: (880, 570),  # M
-    13: (690, 735),  # N
+    0: (160, 150), 1: (360, 150), 2: (160, 335), 3: (360, 335),
+    4: (160, 570), 5: (160, 735),
+    6: (690, 150), 7: (880, 150), 8: (1070, 150),
+    9: (690, 335), 10: (880, 335),
+    11: (690, 570), 12: (880, 570), 13: (690, 735),
 }
 
 EDGES = [
-    (0, 1), (0, 2),
-    (1, 3), (1, 6),
-    (2, 3), (2, 4),
-    (3, 11),
-    (4, 5),
-    (6, 7), (6, 9),
-    (7, 8), (7, 10),
-    (9, 10), (9, 11),
-    (10, 12),
-    (11, 12), (11, 13),
+    (0, 1), (0, 2), (1, 3), (1, 6), (2, 3), (2, 4),
+    (3, 11), (4, 5), (6, 7), (6, 9), (7, 8), (7, 10),
+    (9, 10), (9, 11), (10, 12), (11, 12), (11, 13),
 ]
 
 CONTINENT_RECTS = {
@@ -55,55 +39,30 @@ CONTINENT_RECTS = {
     "Continent 4": pygame.Rect(610, 500, 380, 305),
 }
 
-ADJACENCY = {
-    0: [1, 2],
-    1: [0, 3, 6],
-    2: [0, 3, 4],
-    3: [1, 2, 11],
-    4: [2, 5],
-    5: [4],
-    6: [1, 7, 9],
-    7: [6, 8, 10],
-    8: [7],
-    9: [6, 10, 11],
-    10: [7, 9, 12],
-    11: [3, 9, 12, 13],
-    12: [10, 11],
-    13: [11],
-}
-
-ATTACK_ACTIONS = []
-for attacker in range(14):
-    for defender in ADJACENCY[attacker]:
-        ATTACK_ACTIONS.append((attacker, defender))
-
 
 def draw_arrow(screen, start, end, color):
     pygame.draw.line(screen, color, start, end, 7)
     pygame.draw.circle(screen, color, end, 11)
 
 
-def decode_action(action):
+def decode_action(env, action):
     action = np.array(action, dtype=int)
 
     reinforce_target = int(action[0])
     attack_choice = int(action[1])
 
-    reinforce_desc = f"Reinforce {NAMES[reinforce_target]}"
+    reinforce_desc = f"Reinforce {env.territory_names[reinforce_target]}"
 
     if attack_choice == 0:
         attack_desc = "No attack"
         attack_pair = None
     else:
-        attack_index = attack_choice - 1
-
-        if 0 <= attack_index < len(ATTACK_ACTIONS):
-            attacker, defender = ATTACK_ACTIONS[attack_index]
-            attack_desc = f"Attack {NAMES[attacker]} -> {NAMES[defender]}"
-            attack_pair = (attacker, defender)
-        else:
-            attack_desc = "Invalid attack"
-            attack_pair = None
+        attacker, defender = env.attack_actions[attack_choice - 1]
+        attack_desc = (
+            f"Attack {env.territory_names[attacker]} -> "
+            f"{env.territory_names[defender]}"
+        )
+        attack_pair = (attacker, defender)
 
     return reinforce_desc, attack_desc, attack_pair
 
@@ -123,7 +82,7 @@ def draw_continents(screen, font):
             screen.blit(label, (rect.left, rect.top - 55))
 
 
-def draw_board(screen, env, title_font, font, small_font, action=None, reward=None):
+def draw_board(screen, env, title_font, font, small_font, action=None, reward=None, info=None):
     screen.fill(WHITE)
 
     draw_continents(screen, title_font)
@@ -136,7 +95,7 @@ def draw_board(screen, env, title_font, font, small_font, action=None, reward=No
     attack_pair = None
 
     if action is not None:
-        reinforce_desc, attack_desc, attack_pair = decode_action(action)
+        reinforce_desc, attack_desc, attack_pair = decode_action(env, action)
 
     if attack_pair is not None:
         attacker, defender = attack_pair
@@ -158,7 +117,7 @@ def draw_board(screen, env, title_font, font, small_font, action=None, reward=No
     panel_x = 1030
     panel_y = 470
 
-    screen.blit(title_font.render("MiniRisk PPO", True, BLACK), (panel_x, panel_y))
+    screen.blit(title_font.render("MiniRisk Maskable PPO", True, BLACK), (panel_x, panel_y))
     screen.blit(font.render(f"Turn: {env.turn}", True, BLACK), (panel_x, panel_y + 60))
 
     screen.blit(font.render("PPO Turn:", True, BLACK), (panel_x, panel_y + 110))
@@ -192,8 +151,19 @@ def draw_board(screen, env, title_font, font, small_font, action=None, reward=No
         (panel_x, panel_y + 335),
     )
 
-    screen.blit(small_font.render("Blue = PPO | Red = Enemy", True, BLACK), (panel_x, panel_y + 390))
-    screen.blit(small_font.render("Green = Attack", True, BLACK), (panel_x, panel_y + 425))
+    if info is not None:
+        screen.blit(
+            small_font.render(
+                f"Valid attacks: {info.get('successful_attacks', 0)} | "
+                f"Invalid attacks: {info.get('invalid_attacks', 0)}",
+                True,
+                BLACK,
+            ),
+            (panel_x, panel_y + 370),
+        )
+
+    screen.blit(small_font.render("Blue = PPO | Red = Enemy", True, BLACK), (panel_x, panel_y + 415))
+    screen.blit(small_font.render("Green = Masked Legal Attack", True, BLACK), (panel_x, panel_y + 450))
 
     pygame.display.flip()
 
@@ -202,17 +172,18 @@ def main():
     pygame.init()
 
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("MiniRisk PPO Visualization")
+    pygame.display.set_caption("MiniRisk Maskable PPO Visualization")
 
     title_font = pygame.font.SysFont(None, 44)
     font = pygame.font.SysFont(None, 34)
     small_font = pygame.font.SysFont(None, 27)
 
     env = MiniRiskEnv()
-    model = PPO.load("ppo_minirisk")
+    model = MaskablePPO.load("ppo_minirisk")
 
     obs, _ = env.reset()
     done = False
+    info = None
 
     draw_board(screen, env, title_font, font, small_font)
     time.sleep(1)
@@ -223,10 +194,25 @@ def main():
                 pygame.quit()
                 return
 
-        action, _ = model.predict(obs, deterministic=True)
+        action_masks = get_action_masks(env)
+        action, _ = model.predict(
+            obs,
+            deterministic=True,
+            action_masks=action_masks,
+        )
+
         obs, reward, terminated, truncated, info = env.step(action)
 
-        draw_board(screen, env, title_font, font, small_font, action=action, reward=reward)
+        draw_board(
+            screen,
+            env,
+            title_font,
+            font,
+            small_font,
+            action=action,
+            reward=reward,
+            info=info,
+        )
 
         done = terminated or truncated
         time.sleep(1.5)

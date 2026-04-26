@@ -3,7 +3,9 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 import numpy as np
 import matplotlib.pyplot as plt
-from stable_baselines3 import PPO
+
+from sb3_contrib import MaskablePPO
+from sb3_contrib.common.maskable.utils import get_action_masks
 
 from env import MiniRiskEnv
 from agents import RandomAgent, GreedyAgent
@@ -27,7 +29,12 @@ def run_episode(env, agent_type, model=None):
 
     while not done:
         if agent_type == "ppo":
-            action, _ = model.predict(obs, deterministic=True)
+            action_masks = get_action_masks(env)
+            action, _ = model.predict(
+                obs,
+                deterministic=True,
+                action_masks=action_masks,
+            )
         else:
             action = agent.choose_action(obs)
 
@@ -60,7 +67,7 @@ def evaluate_agent(agent_type, num_games=100):
 
     model = None
     if agent_type == "ppo":
-        model = PPO.load("ppo_minirisk")
+        model = MaskablePPO.load("ppo_minirisk")
 
     for _ in range(num_games):
         env = MiniRiskEnv()
@@ -87,7 +94,6 @@ def evaluate_agent(agent_type, num_games=100):
     total_invalid_reinf = np.sum(invalid_reinforces)
 
     total_success_attacks = np.sum(successful_attacks)
-    total_invalid_attacks = np.sum(invalid_attacks)
     total_attack_attempts = np.sum(total_attacks_attempted)
 
     reinforce_valid_pct = (

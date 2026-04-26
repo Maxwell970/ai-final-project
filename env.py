@@ -4,7 +4,7 @@ import numpy as np
 import random
 
 # ======================================================
-# EASY TUNING VARIABLES
+# VARIABLES
 # ======================================================
 
 MAX_TURNS = 75
@@ -87,6 +87,11 @@ class MiniRiskEnv(gym.Env):
 
         self.num_attack_actions = len(self.attack_actions)
 
+        # Action format:
+        # [reinforce_target, attack_choice]
+        #
+        # reinforce_target: 0-13
+        # attack_choice: 0 = no attack, 1-num_attack_actions = attack action
         self.action_space = spaces.MultiDiscrete(
             [self.num_territories, self.num_attack_actions + 1]
         )
@@ -103,6 +108,9 @@ class MiniRiskEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
+        # Fixed balanced start:
+        # Player owns A, B, E, I, J, K, N
+        # Enemy owns C, D, F, G, H, L, M
         self.owners = np.array(
             [0, 0, 1, 1, 0, 1, 1, 1, 0, 0, 0, 1, 1, 0],
             dtype=np.int32,
@@ -122,6 +130,44 @@ class MiniRiskEnv(gym.Env):
         self.no_attack_turns = 0
 
         return self._get_obs(), {}
+
+    # --------------------------------------------------
+    # ACTION MASKING FOR MASKABLE PPO
+    # --------------------------------------------------
+
+    def action_masks(self):
+        """
+        MaskablePPO uses this to avoid illegal actions.
+
+        For MultiDiscrete([14, num_attack_actions + 1]), the mask is flattened:
+        first 14 entries = legal reinforce targets
+        remaining entries = legal attack choices
+        """
+
+        reinforce_mask = np.zeros(self.num_territories, dtype=bool)
+
+        for territory in range(self.num_territories):
+            reinforce_mask[territory] = self.owners[territory] == 0
+
+        attack_mask = np.zeros(self.num_attack_actions + 1, dtype=bool)
+
+        # Always allow no attack
+        attack_mask[0] = True
+
+        for i, (attacker, defender) in enumerate(self.attack_actions):
+            legal_attack = (
+                self.owners[attacker] == 0
+                and self.owners[defender] == 1
+                and self.troops[attacker] > self.troops[defender]
+            )
+
+            attack_mask[i + 1] = legal_attack
+
+        return np.concatenate([reinforce_mask, attack_mask])
+
+    # --------------------------------------------------
+    # CORE ENVIRONMENT HELPERS
+    # --------------------------------------------------
 
     def _get_obs(self):
         return np.concatenate([self.owners, self.troops]).astype(np.int32)
@@ -144,26 +190,32 @@ class MiniRiskEnv(gym.Env):
 
     def _count_controlled_continents(self, owner_id):
         count = 0
+
         for territories in self.continents.values():
             if all(self.owners[t] == owner_id for t in territories):
                 count += 1
+
         return count
 
     def _continent_bonus_total(self, owner_id):
         total = 0
+
         for name, territories in self.continents.items():
             if all(self.owners[t] == owner_id for t in territories):
                 total += self.continent_bonuses[name]
+
         return total
 
     def _calculate_reinforcements(self, owner_id):
         owned = int(np.sum(self.owners == owner_id))
         territory_bonus = max(3, owned // 3)
         continent_bonus = self._continent_bonus_total(owner_id)
+
         return territory_bonus + continent_bonus
 
     def _capture(self, attacker, defender, new_owner):
         remaining = self.troops[attacker] - self.troops[defender]
+
         self.owners[defender] = new_owner
         self.troops[defender] = max(1, remaining)
         self.troops[attacker] = 1
@@ -183,12 +235,14 @@ class MiniRiskEnv(gym.Env):
                 and self.troops[attacker] > self.troops[defender]
             ):
                 return True
+
         return False
 
     def _player_turn(self, action):
         reward = BASE_TURN_REWARD
         reinforce_target, attack_choice = map(int, action)
 
+        # Reinforce phase
         if self._place_reinforcements(0, reinforce_target):
             self.valid_reinforces += 1
             reward += VALID_REINFORCE_REWARD
@@ -196,6 +250,7 @@ class MiniRiskEnv(gym.Env):
             self.invalid_reinforces += 1
             reward += INVALID_REINFORCE_PENALTY
 
+        # Attack phase
         if attack_choice == 0:
             self.no_attack_turns += 1
 
@@ -219,31 +274,41 @@ class MiniRiskEnv(gym.Env):
 
             if valid:
                 prev_enemy = int(np.sum(self.owners == 1))
+
                 self._capture(attacker, defender, 0)
+
                 new_enemy = int(np.sum(self.owners == 1))
+                captured = prev_enemy - new_enemy
 
                 self.successful_attacks += 1
 
                 reward += VALID_ATTACK_REWARD
-                reward += PER_TERRITORY_CAPTURE_REWARD * (prev_enemy - new_enemy)
+                reward += PER_TERRITORY_CAPTURE_REWARD * captured
+
             else:
                 self.invalid_attacks += 1
                 reward += INVALID_ATTACK_PENALTY
 
         return reward
 
+    # --------------------------------------------------
+    # ENEMY LOGIC
+    # --------------------------------------------------
+
     def _enemy_reinforce(self):
         enemy_owned = np.where(self.owners == 1)[0]
+
         if len(enemy_owned) == 0:
             return
 
         reinforcements = self._calculate_reinforcements(1)
 
         border = []
-        for t in enemy_owned:
-            t = int(t)
-            if any(self.owners[n] == 0 for n in self.adjacency[t]):
-                border.append(t)
+        for territory in enemy_owned:
+            territory = int(territory)
+
+            if any(self.owners[n] == 0 for n in self.adjacency[territory]):
+                border.append(territory)
 
         if border:
             target = min(border, key=lambda x: self.troops[x])
@@ -260,7 +325,10 @@ class MiniRiskEnv(gym.Env):
                 continue
 
             for defender in self.adjacency[attacker]:
-                if self.owners[defender] == 0 and self.troops[attacker] > self.troops[defender]:
+                if (
+                    self.owners[defender] == 0
+                    and self.troops[attacker] > self.troops[defender]
+                ):
                     attacks.append((attacker, defender))
 
         if not attacks:
@@ -276,6 +344,7 @@ class MiniRiskEnv(gym.Env):
 
         self._capture(attacker, defender, 1)
         self.enemy_successful_attacks += 1
+
         return True
 
     def _enemy_turn(self):
@@ -288,6 +357,10 @@ class MiniRiskEnv(gym.Env):
             reward += ENEMY_SUCCESSFUL_ATTACK_PENALTY
 
         return reward
+
+    # --------------------------------------------------
+    # STEP
+    # --------------------------------------------------
 
     def step(self, action):
         self.turn += 1
@@ -315,6 +388,7 @@ class MiniRiskEnv(gym.Env):
         reward += ENEMY_CONTINENT_HOLD_PENALTY * self._continent_bonus_total(1)
 
         player_troops = self.troops[self.owners == 0]
+
         if len(player_troops) > 0:
             if np.max(player_troops) > np.mean(player_troops) * HOARDING_MULTIPLIER:
                 reward += HOARDING_PENALTY
@@ -341,7 +415,11 @@ class MiniRiskEnv(gym.Env):
 
         for i in range(self.num_territories):
             owner = "Player" if self.owners[i] == 0 else "Enemy"
-            print(f"{self.territory_names[i]} | {owner:<6} | Troops: {self.troops[i]}")
+            print(
+                f"{self.territory_names[i]} | "
+                f"{owner:<6} | "
+                f"Troops: {self.troops[i]}"
+            )
 
         print("\nDebug Counters:")
         print(self._get_info())
@@ -353,10 +431,14 @@ if __name__ == "__main__":
     obs, _ = env.reset()
 
     done = False
+
     while not done:
         env.render()
+
         action = env.action_space.sample()
         obs, reward, terminated, truncated, info = env.step(action)
+
         print("Action:", action)
         print("Reward:", reward)
+
         done = terminated or truncated
