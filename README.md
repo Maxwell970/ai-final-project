@@ -45,6 +45,13 @@ The PPO agent was compared against two baselines. A random agent and a greedy ag
 - Valid Reinforcement %
 - Attack Success %
 
+=== Evaluation Results ===
+Agent     Win %     Avg Rwd     Turns     Valid Rein%   Atk Success%   Bad Atks    Skip Good Atk 
+-------------------------------------------------------------------------------------------------
+random    0.00      -235.85     30.99     30.75         2.51           29.47       0.32          
+greedy    79.00     166.45      33.32     100.00        100.00         0.00        4.06          
+ppo       100.00    221.55      30.52     100.00        100.00         0.00        3.62          
+
 ## Generated Charts
 
 
@@ -56,3 +63,6 @@ The PPO agent was compared against two baselines. A random agent and a greedy ag
 
 ### PPO Training Reward Curve
 <img src="EVIDENCE\training_reward_curve_4-26.png" width="650">
+
+
+
