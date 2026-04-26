@@ -36,3 +36,19 @@ Technical Walkthrough Link
 
 # Evaluation
 
+The PPO agent was compared against two baselines. A random agent and a greedy agent. The random agent selected actions randomly and the greedy agent reinforces its weakest border and attacks the best immediate target. 
+
+## Metrics Used
+- Win Rate
+- Average Reward
+- Average Turns to Finish
+- Valid Reinforcement %
+- Attack Success %
+
+## Generated Charts
+
+![Reward by Agent](EVIDENCE\avg_reward_by_agent_4-26.png)
+
+![Win Rate by Agent](EVIDENCE\win_rate_by_agent_4-26.png)
+
+![PPO Training Reward Curve](EVIDENCE\training_reward_curve_4-26.png)
