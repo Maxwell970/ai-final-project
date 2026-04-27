@@ -6,7 +6,7 @@ A reinforcement learning project where a PPO agent learns to play a simplified R
 
 # What it Does
 
-MiniRisk PPO Agent is a custom reinforcement learning system built around a simplified version of the board game Risk. The project uses a handcrafted map with 14 connected territories divided into continents, where the player and enemy compete for  control of the board. A Maskable Proximal Policy Optimization (PPO) agent learns how to reinforce territories, choose legal attacks, expand efficiently, and win games against an adversarial scripted opponent. The environment includes randomized balanced starting positions to reduce overfitting to one opening setup. The trained PPO model is evaluated against two baselines: a random agent and a greedy  agent. Results show that reinforcement learning can discover strong strategic behavior in a turn-based conquest game. 
+MiniRisk PPO Agent is a custom reinforcement learning system built around a simplified version of the board game Risk. The project uses a map with 14 connected territories divided into continents, where the player and enemy compete for  control of the board. A Maskable Proximal Policy Optimization (PPO) agent learns how to reinforce territories, choose legal attacks, expand efficiently, and win games against an adversarial scripted opponent. The environment includes randomized balanced starting positions to reduce overfitting to one opening setup. The trained PPO model is evaluated against two baselines: a random agent and a greedy  agent. Results show that reinforcement learning can discover strong strategic behavior in a turn-based conquest game. 
 
 ---
 
@@ -38,7 +38,7 @@ Technical Walkthrough Link
 
 The PPO agent was compared against two baselines. A random agent and a greedy agent. The random agent selected actions randomly and the greedy agent reinforces its weakest border and attacks the best immediate target. 
 
-## Metrics Used
+## Metrics Used (PPO vs Scripted Opponent)
 - Win Rate
 - Average Reward
 - Average Turns to Finish

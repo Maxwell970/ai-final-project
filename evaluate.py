@@ -11,6 +11,16 @@ from env import MiniRiskEnv
 from agents import RandomAgent, GreedyAgent
 
 
+def display_name(agent_type):
+    names = {
+        "random": "Random",
+        "greedy": "Greedy",
+        "ppo": "PPO",
+        "ppo_greedy_enemy": "PPO vs Greedy Enemy",
+    }
+    return names.get(agent_type, agent_type)
+
+
 def run_episode(env, agent_type, model=None):
     obs, _ = env.reset()
     done = False
@@ -28,7 +38,7 @@ def run_episode(env, agent_type, model=None):
         agent = None
 
     while not done:
-        if agent_type == "ppo":
+        if agent_type in ["ppo", "ppo_greedy_enemy"]:
             action_masks = get_action_masks(env)
             action, _ = model.predict(
                 obs,
@@ -66,11 +76,14 @@ def evaluate_agent(agent_type, num_games=100):
     skipped_valid_attacks = []
 
     model = None
-    if agent_type == "ppo":
+    if agent_type in ["ppo", "ppo_greedy_enemy"]:
         model = MaskablePPO.load("ppo_minirisk")
 
     for _ in range(num_games):
-        env = MiniRiskEnv()
+        if agent_type == "ppo_greedy_enemy":
+            env = MiniRiskEnv(enemy_policy="greedy")
+        else:
+            env = MiniRiskEnv()
 
         total_reward, num_turns, won, info = run_episode(
             env,
@@ -108,6 +121,7 @@ def evaluate_agent(agent_type, num_games=100):
 
     return {
         "agent": agent_type,
+        "agent_name": display_name(agent_type),
         "avg_reward": np.mean(rewards),
         "avg_turns": np.mean(turns),
         "win_rate": np.mean(wins),
@@ -123,32 +137,35 @@ def evaluate_agent(agent_type, num_games=100):
 
 
 def plot_results(results):
-    agents = [r["agent"].upper() for r in results]
+    agents = [r["agent_name"] for r in results]
     rewards = [r["avg_reward"] for r in results]
     turns = [r["avg_turns"] for r in results]
     win_rates = [r["win_rate"] * 100 for r in results]
 
-    plt.figure(figsize=(8, 5))
+    plt.figure(figsize=(10, 5))
     plt.bar(agents, rewards)
     plt.title("Average Reward by Agent")
     plt.ylabel("Average Reward")
+    plt.xticks(rotation=15, ha="right")
     plt.tight_layout()
     plt.savefig("avg_reward_by_agent.png")
     plt.close()
 
-    plt.figure(figsize=(8, 5))
+    plt.figure(figsize=(10, 5))
     plt.bar(agents, turns)
     plt.title("Average Turns by Agent")
     plt.ylabel("Average Turns")
+    plt.xticks(rotation=15, ha="right")
     plt.tight_layout()
     plt.savefig("avg_turns_by_agent.png")
     plt.close()
 
-    plt.figure(figsize=(8, 5))
+    plt.figure(figsize=(10, 5))
     plt.bar(agents, win_rates)
     plt.title("Win Rate by Agent")
     plt.ylabel("Win Rate (%)")
     plt.ylim(0, 100)
+    plt.xticks(rotation=15, ha="right")
     plt.tight_layout()
     plt.savefig("win_rate_by_agent.png")
     plt.close()
@@ -158,15 +175,15 @@ def main():
     num_games = 100
     results = []
 
-    for agent_type in ["random", "greedy", "ppo"]:
-        print(f"Evaluating {agent_type} agent...")
+    for agent_type in ["random", "greedy", "ppo", "ppo_greedy_enemy"]:
+        print(f"Evaluating {display_name(agent_type)}...")
         result = evaluate_agent(agent_type, num_games=num_games)
         results.append(result)
 
     print("\n=== Evaluation Results ===")
 
     header = (
-        f"{'Agent':<10}"
+        f"{'Agent':<22}"
         f"{'Win %':<10}"
         f"{'Avg Rwd':<12}"
         f"{'Turns':<10}"
@@ -181,7 +198,7 @@ def main():
 
     for r in results:
         print(
-            f"{r['agent']:<10}"
+            f"{r['agent_name']:<22}"
             f"{r['win_rate'] * 100:<10.2f}"
             f"{r['avg_reward']:<12.2f}"
             f"{r['avg_turns']:<10.2f}"

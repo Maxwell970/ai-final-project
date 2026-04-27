@@ -39,8 +39,9 @@ TIMEOUT_PENALTY = -50
 
 
 class MiniRiskEnv(gym.Env):
-    def __init__(self):
+    def __init__(self, enemy_policy="scripted"):
         super().__init__()
+        self.enemy_policy = enemy_policy
 
         self.num_territories = 14
         self.territory_names = list("ABCDEFGHIJKLMN")
@@ -344,7 +345,12 @@ class MiniRiskEnv(gym.Env):
 
         self._enemy_reinforce()
 
-        if self._enemy_attack():
+        if self.enemy_policy == "greedy":
+            attacked = self._enemy_greedy_attack()
+        else:
+            attacked = self._enemy_attack()
+
+        if attacked:
             reward += ENEMY_SUCCESSFUL_ATTACK_PENALTY
 
         return reward
@@ -385,6 +391,32 @@ class MiniRiskEnv(gym.Env):
             truncated = True
 
         return self._get_obs(), reward, terminated, truncated, self._get_info()
+    
+
+    def _enemy_greedy_attack(self):
+        attacks = []
+
+        for attacker in range(self.num_territories):
+            if self.owners[attacker] != 1:
+                continue
+
+            for defender in self.adjacency[attacker]:
+                if (
+                    self.owners[defender] == 0
+                    and self.troops[attacker] > self.troops[defender]
+                ):
+                    advantage = self.troops[attacker] - self.troops[defender]
+                    attacks.append((advantage, attacker, defender))
+
+        if not attacks:
+            return False
+
+        _, attacker, defender = max(attacks)
+        self._capture(attacker, defender, 1)
+        self.enemy_successful_attacks += 1
+
+        return True
+    
 
     def render(self):
         print(f"\n=== TURN {self.turn} ===")
