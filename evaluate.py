@@ -11,14 +11,50 @@ from env import MiniRiskEnv
 from agents import RandomAgent, GreedyAgent
 
 
+NORMAL_MODEL_PATH = "ppo_minirisk"
+MIXED_MODEL_PATH = "ppo_minirisk_mixed"
+
+
+def model_exists(model_path):
+    return os.path.exists(model_path + ".zip")
+
+
 def display_name(agent_type):
     names = {
         "random": "Random",
         "greedy": "Greedy",
         "ppo": "PPO",
         "ppo_greedy_enemy": "PPO vs Greedy Enemy",
+        "ppo_mixed": "PPO Mixed",
+        "ppo_mixed_greedy_enemy": "PPO Mixed vs Greedy Enemy",
     }
     return names.get(agent_type, agent_type)
+
+
+def is_ppo_agent(agent_type):
+    return agent_type in [
+        "ppo",
+        "ppo_greedy_enemy",
+        "ppo_mixed",
+        "ppo_mixed_greedy_enemy",
+    ]
+
+
+def load_model(agent_type):
+    if agent_type in ["ppo", "ppo_greedy_enemy"]:
+        return MaskablePPO.load(NORMAL_MODEL_PATH)
+
+    if agent_type in ["ppo_mixed", "ppo_mixed_greedy_enemy"]:
+        return MaskablePPO.load(MIXED_MODEL_PATH)
+
+    return None
+
+
+def make_env(agent_type):
+    if agent_type in ["ppo_greedy_enemy", "ppo_mixed_greedy_enemy"]:
+        return MiniRiskEnv(enemy_policy="greedy")
+
+    return MiniRiskEnv()
 
 
 def run_episode(env, agent_type, model=None):
@@ -38,7 +74,7 @@ def run_episode(env, agent_type, model=None):
         agent = None
 
     while not done:
-        if agent_type in ["ppo", "ppo_greedy_enemy"]:
+        if is_ppo_agent(agent_type):
             action_masks = get_action_masks(env)
             action, _ = model.predict(
                 obs,
@@ -75,15 +111,10 @@ def evaluate_agent(agent_type, num_games=100):
     total_attacks_attempted = []
     skipped_valid_attacks = []
 
-    model = None
-    if agent_type in ["ppo", "ppo_greedy_enemy"]:
-        model = MaskablePPO.load("ppo_minirisk")
+    model = load_model(agent_type)
 
     for _ in range(num_games):
-        if agent_type == "ppo_greedy_enemy":
-            env = MiniRiskEnv(enemy_policy="greedy")
-        else:
-            env = MiniRiskEnv()
+        env = make_env(agent_type)
 
         total_reward, num_turns, won, info = run_episode(
             env,
@@ -125,13 +156,10 @@ def evaluate_agent(agent_type, num_games=100):
         "avg_reward": np.mean(rewards),
         "avg_turns": np.mean(turns),
         "win_rate": np.mean(wins),
-
         "valid_reinforce_pct": reinforce_valid_pct,
         "avg_invalid_reinforces": np.mean(invalid_reinforces),
-
         "attack_success_pct": attack_success_pct,
         "avg_invalid_attacks": np.mean(invalid_attacks),
-
         "avg_skipped_valid_attacks": np.mean(skipped_valid_attacks),
     }
 
@@ -142,30 +170,30 @@ def plot_results(results):
     turns = [r["avg_turns"] for r in results]
     win_rates = [r["win_rate"] * 100 for r in results]
 
-    plt.figure(figsize=(10, 5))
+    plt.figure(figsize=(12, 5))
     plt.bar(agents, rewards)
     plt.title("Average Reward by Agent")
     plt.ylabel("Average Reward")
-    plt.xticks(rotation=15, ha="right")
+    plt.xticks(rotation=20, ha="right")
     plt.tight_layout()
     plt.savefig("avg_reward_by_agent.png")
     plt.close()
 
-    plt.figure(figsize=(10, 5))
+    plt.figure(figsize=(12, 5))
     plt.bar(agents, turns)
     plt.title("Average Turns by Agent")
     plt.ylabel("Average Turns")
-    plt.xticks(rotation=15, ha="right")
+    plt.xticks(rotation=20, ha="right")
     plt.tight_layout()
     plt.savefig("avg_turns_by_agent.png")
     plt.close()
 
-    plt.figure(figsize=(10, 5))
+    plt.figure(figsize=(12, 5))
     plt.bar(agents, win_rates)
     plt.title("Win Rate by Agent")
     plt.ylabel("Win Rate (%)")
     plt.ylim(0, 100)
-    plt.xticks(rotation=15, ha="right")
+    plt.xticks(rotation=20, ha="right")
     plt.tight_layout()
     plt.savefig("win_rate_by_agent.png")
     plt.close()
@@ -173,9 +201,22 @@ def plot_results(results):
 
 def main():
     num_games = 100
+
+    agent_types = ["random", "greedy"]
+
+    if model_exists(NORMAL_MODEL_PATH):
+        agent_types.extend(["ppo", "ppo_greedy_enemy"])
+    else:
+        print("Skipping normal PPO evaluations because ppo_minirisk.zip was not found.")
+
+    if model_exists(MIXED_MODEL_PATH):
+        agent_types.extend(["ppo_mixed", "ppo_mixed_greedy_enemy"])
+    else:
+        print("Skipping mixed PPO evaluations because ppo_minirisk_mixed.zip was not found.")
+
     results = []
 
-    for agent_type in ["random", "greedy", "ppo", "ppo_greedy_enemy"]:
+    for agent_type in agent_types:
         print(f"Evaluating {display_name(agent_type)}...")
         result = evaluate_agent(agent_type, num_games=num_games)
         results.append(result)
@@ -183,7 +224,7 @@ def main():
     print("\n=== Evaluation Results ===")
 
     header = (
-        f"{'Agent':<22}"
+        f"{'Agent':<30}"
         f"{'Win %':<10}"
         f"{'Avg Rwd':<12}"
         f"{'Turns':<10}"
@@ -198,7 +239,7 @@ def main():
 
     for r in results:
         print(
-            f"{r['agent_name']:<22}"
+            f"{r['agent_name']:<30}"
             f"{r['win_rate'] * 100:<10.2f}"
             f"{r['avg_reward']:<12.2f}"
             f"{r['avg_turns']:<10.2f}"

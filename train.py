@@ -112,7 +112,7 @@ def train_model():
     )
 
     model.learn(
-        total_timesteps=100_000,
+        total_timesteps=200_000,
         callback=reward_callback,
     )
 
