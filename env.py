@@ -17,6 +17,7 @@ BASE_TURN_REWARD = -0.2
 # Reinforcement legality
 VALID_REINFORCE_REWARD = 0.1
 INVALID_REINFORCE_PENALTY = -2.0
+REINFORCEMENT_SIZE_REWARD = 0.5
 
 # Attack behavior
 NO_ATTACK_REWARD = 0.0
@@ -236,9 +237,15 @@ class MiniRiskEnv(gym.Env):
         reinforce_target, attack_choice = map(int, action)
 
         # Reinforce phase
-        if self._place_reinforcements(0, reinforce_target):
+        # Reinforce phase
+        if self.owners[reinforce_target] == 0:
+            reinforcements_earned = self._calculate_reinforcements(0)
+
+            self.troops[reinforce_target] += reinforcements_earned
             self.valid_reinforces += 1
+
             reward += VALID_REINFORCE_REWARD
+            reward += REINFORCEMENT_SIZE_REWARD * reinforcements_earned
         else:
             self.invalid_reinforces += 1
             reward += INVALID_REINFORCE_PENALTY

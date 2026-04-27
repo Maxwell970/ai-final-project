@@ -1,3 +1,4 @@
+import os
 import pygame
 import time
 import numpy as np
@@ -38,6 +39,74 @@ CONTINENT_RECTS = {
     "Continent 3": pygame.Rect(80, 500, 160, 305),
     "Continent 4": pygame.Rect(610, 500, 380, 305),
 }
+
+
+def draw_centered_text(screen, text, font, y, color=BLACK):
+    rendered = font.render(text, True, color)
+    screen.blit(rendered, rendered.get_rect(center=(WIDTH // 2, y)))
+
+
+def choose_model(screen, title_font, font, small_font):
+    screen.fill(WHITE)
+
+    draw_centered_text(screen, "Choose PPO Model", title_font, 220)
+    draw_centered_text(screen, "Press 1: Original PPO Model", font, 320)
+    draw_centered_text(screen, "Press 2: Mixed-Training PPO Model", font, 370)
+    draw_centered_text(
+        screen,
+        "Original = trained against scripted enemy. Mixed = trained against mixed opponent strategies.",
+        small_font,
+        460,
+    )
+
+    pygame.display.flip()
+
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                return None, None
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1:
+                    return "ppo_minirisk", "Original PPO"
+                if event.key == pygame.K_2:
+                    if os.path.exists("ppo_minirisk_mixed.zip"):
+                        return "ppo_minirisk_mixed", "Mixed PPO"
+                    else:
+                        screen.fill(WHITE)
+                        draw_centered_text(screen, "Mixed model not found.", title_font, 260, RED)
+                        draw_centered_text(screen, "Run python train_mixed.py first.", font, 340)
+                        draw_centered_text(screen, "Press 1 for Original PPO or close window.", small_font, 420)
+                        pygame.display.flip()
+
+
+def choose_enemy_policy(screen, title_font, font, small_font):
+    screen.fill(WHITE)
+
+    draw_centered_text(screen, "Choose Opponent", title_font, 220)
+    draw_centered_text(screen, "Press 1: Scripted Enemy", font, 320)
+    draw_centered_text(screen, "Press 2: Greedy Enemy", font, 370)
+    draw_centered_text(
+        screen,
+        "Scripted attacks probabilistically. Greedy always takes its strongest legal attack.",
+        small_font,
+        460,
+    )
+
+    pygame.display.flip()
+
+    while True:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                pygame.quit()
+                return None, None
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_1:
+                    return "scripted", "Scripted Enemy"
+                if event.key == pygame.K_2:
+                    return "greedy", "Greedy Enemy"
 
 
 def draw_arrow(screen, start, end, color):
@@ -82,7 +151,18 @@ def draw_continents(screen, font):
             screen.blit(label, (rect.left, rect.top - 55))
 
 
-def draw_board(screen, env, title_font, font, small_font, action=None, reward=None, info=None):
+def draw_board(
+    screen,
+    env,
+    title_font,
+    font,
+    small_font,
+    action=None,
+    reward=None,
+    info=None,
+    enemy_label="Scripted Enemy",
+    model_label="Original PPO",
+):
     screen.fill(WHITE)
 
     draw_continents(screen, title_font)
@@ -115,17 +195,19 @@ def draw_board(screen, env, title_font, font, small_font, action=None, reward=No
         screen.blit(troop_text, troop_text.get_rect(center=(x, y + 20)))
 
     panel_x = 1030
-    panel_y = 470
+    panel_y = 420
 
-    screen.blit(title_font.render("MiniRisk Maskable PPO", True, BLACK), (panel_x, panel_y))
-    screen.blit(font.render(f"Turn: {env.turn}", True, BLACK), (panel_x, panel_y + 60))
+    screen.blit(title_font.render("MiniRisk PPO", True, BLACK), (panel_x, panel_y))
+    screen.blit(small_font.render(f"Model: {model_label}", True, BLACK), (panel_x, panel_y + 50))
+    screen.blit(small_font.render(f"Opponent: {enemy_label}", True, BLACK), (panel_x, panel_y + 85))
+    screen.blit(font.render(f"Turn: {env.turn}", True, BLACK), (panel_x, panel_y + 125))
 
-    screen.blit(font.render("PPO Turn:", True, BLACK), (panel_x, panel_y + 110))
-    screen.blit(small_font.render(reinforce_desc, True, BLACK), (panel_x, panel_y + 150))
-    screen.blit(small_font.render(attack_desc, True, BLACK), (panel_x, panel_y + 185))
+    screen.blit(font.render("PPO Turn:", True, BLACK), (panel_x, panel_y + 175))
+    screen.blit(small_font.render(reinforce_desc, True, BLACK), (panel_x, panel_y + 215))
+    screen.blit(small_font.render(attack_desc, True, BLACK), (panel_x, panel_y + 250))
 
     if reward is not None:
-        screen.blit(font.render(f"Reward: {reward:.2f}", True, BLACK), (panel_x, panel_y + 245))
+        screen.blit(font.render(f"Reward: {reward:.2f}", True, BLACK), (panel_x, panel_y + 305))
 
     player_count = int(np.sum(env.owners == 0))
     enemy_count = int(np.sum(env.owners == 1))
@@ -136,7 +218,7 @@ def draw_board(screen, env, title_font, font, small_font, action=None, reward=No
             True,
             BLACK,
         ),
-        (panel_x, panel_y + 300),
+        (panel_x, panel_y + 360),
     )
 
     player_reinforcements = env._calculate_reinforcements(0)
@@ -148,7 +230,7 @@ def draw_board(screen, env, title_font, font, small_font, action=None, reward=No
             True,
             BLACK,
         ),
-        (panel_x, panel_y + 335),
+        (panel_x, panel_y + 395),
     )
 
     if info is not None:
@@ -159,11 +241,11 @@ def draw_board(screen, env, title_font, font, small_font, action=None, reward=No
                 True,
                 BLACK,
             ),
-            (panel_x, panel_y + 370),
+            (panel_x, panel_y + 430),
         )
 
-    screen.blit(small_font.render("Blue = PPO | Red = Enemy", True, BLACK), (panel_x, panel_y + 415))
-    screen.blit(small_font.render("Green = Masked Legal Attack", True, BLACK), (panel_x, panel_y + 450))
+    screen.blit(small_font.render("Blue = PPO | Red = Enemy", True, BLACK), (panel_x, panel_y + 475))
+    screen.blit(small_font.render("Green = PPO Attack", True, BLACK), (panel_x, panel_y + 510))
 
     pygame.display.flip()
 
@@ -172,20 +254,36 @@ def main():
     pygame.init()
 
     screen = pygame.display.set_mode((WIDTH, HEIGHT))
-    pygame.display.set_caption("MiniRisk Maskable PPO Visualization")
+    pygame.display.set_caption("MiniRisk PPO Visualization")
 
     title_font = pygame.font.SysFont(None, 44)
     font = pygame.font.SysFont(None, 34)
     small_font = pygame.font.SysFont(None, 27)
 
-    env = MiniRiskEnv()
-    model = MaskablePPO.load("ppo_minirisk")
+    model_path, model_label = choose_model(screen, title_font, font, small_font)
+    if model_path is None:
+        return
+
+    enemy_policy, enemy_label = choose_enemy_policy(screen, title_font, font, small_font)
+    if enemy_policy is None:
+        return
+
+    env = MiniRiskEnv(enemy_policy=enemy_policy)
+    model = MaskablePPO.load(model_path)
 
     obs, _ = env.reset()
     done = False
     info = None
 
-    draw_board(screen, env, title_font, font, small_font)
+    draw_board(
+        screen,
+        env,
+        title_font,
+        font,
+        small_font,
+        enemy_label=enemy_label,
+        model_label=model_label,
+    )
     time.sleep(1)
 
     while not done:
@@ -212,6 +310,8 @@ def main():
             action=action,
             reward=reward,
             info=info,
+            enemy_label=enemy_label,
+            model_label=model_label,
         )
 
         done = terminated or truncated
