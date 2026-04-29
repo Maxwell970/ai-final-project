@@ -10,14 +10,10 @@ This project trains and evaluates a reinforcement learning agent that learns to 
 ### 1. Install dependencies
     pip install -r requirements.txt
 
-### 2. Train the PPO Agent
-    python src/train.py
-    python src/mixed_train.py
-
-### 3. Evaluate the Agents
+### 2. Evaluate the Agents
     python src/evaluate.py
 
-### 4. Watch the Agent Play
+### 3. Watch the Agent Play
     python src/visualize.py
 
 

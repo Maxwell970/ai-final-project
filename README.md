@@ -15,12 +15,6 @@ MiniRisk PPO Agent is a custom reinforcement learning system built around a simp
 ## Install Dependencies
     pip install -r requirements.txt
 
-## Train the PPO Agent
-    python train.py
-
-## Evaluate Performance
-    python evaluate.py
-
 ## Watch the Agent Play
     python visualize.py
 
