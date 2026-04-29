@@ -1,0 +1,4 @@
+Version,Entropy,Batch Size,Learning Rate,Gamma,Average Reward,Average Turns,Win Rate,Model File,Result
+A,0.01,128,0.0003,0.99,395.11,39.48,94.0,ppo_minirisk_hparam_A.zip,best
+B,0.03,256,0.0003,0.99,380.19,42.18,88.0,ppo_minirisk_hparam_B.zip,weaker
+C,0.04,256,0.0003,0.99,385.87,41.4,90.0,ppo_minirisk_hparam_C.zip,better

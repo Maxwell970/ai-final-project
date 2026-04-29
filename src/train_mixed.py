@@ -125,7 +125,7 @@ def train_mixed_model():
         callback=reward_callback,
     )
 
-    model.save("ppo_minirisk_mixed")
+    model.save("models/ppo_minirisk_mixed")
     reward_callback.save_reward_curve("training_reward_curve_mixed.png")
 
     print("Training complete. Model saved as ppo_minirisk_mixed.zip")

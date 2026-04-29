@@ -3,10 +3,6 @@ from gymnasium import spaces
 import numpy as np
 import random
 
-# ======================================================
-# VARIABLES
-# ======================================================
-
 MAX_TURNS = 75
 STARTING_TROOPS = 3
 ENEMY_ATTACK_PROBABILITY = 0.25
@@ -19,7 +15,7 @@ VALID_REINFORCE_REWARD = 0.1
 INVALID_REINFORCE_PENALTY = -2.0
 REINFORCEMENT_SIZE_REWARD = 0.5
 
-# Attack behavior
+# Attack
 NO_ATTACK_REWARD = 0.0
 SKIP_VALID_ATTACK_PENALTY = -0.5
 VALID_ATTACK_REWARD = 0.5
@@ -30,10 +26,9 @@ INVALID_ATTACK_PENALTY = -2.0
 NEW_PLAYER_CONTINENT_REWARD = 5.0
 NEW_ENEMY_CONTINENT_PENALTY = -5.0
 
-# Opponent progress
+
 ENEMY_SUCCESSFUL_ATTACK_PENALTY = -2.0
 
-# Terminal outcomes
 WIN_REWARD = 200
 LOSS_PENALTY = -200
 TIMEOUT_PENALTY = -100
@@ -101,10 +96,6 @@ class MiniRiskEnv(gym.Env):
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
 
-        # -----------------------------------------
-        # RANDOM BALANCED START
-        # 7 player territories / 7 enemy territories
-        # -----------------------------------------
         territories = np.arange(self.num_territories)
 
         np.random.shuffle(territories)
@@ -135,9 +126,8 @@ class MiniRiskEnv(gym.Env):
 
         return self._get_obs(), {}
 
-    # --------------------------------------------------
-    # ACTION MASKING FOR MASKABLE PPO
-    # --------------------------------------------------
+    # ACTION MASKING 
+
 
     def action_masks(self):
         reinforce_mask = np.zeros(self.num_territories, dtype=bool)
@@ -236,7 +226,6 @@ class MiniRiskEnv(gym.Env):
         reward = BASE_TURN_REWARD
         reinforce_target, attack_choice = map(int, action)
 
-        # Reinforce phase
         # Reinforce phase
         if self.owners[reinforce_target] == 0:
             reinforcements_earned = self._calculate_reinforcements(0)

@@ -69,10 +69,10 @@ def choose_model(screen, title_font, font, small_font):
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_1:
-                    return "ppo_minirisk", "Original PPO"
+                    return "models/ppo_minirisk", "Original PPO"
                 if event.key == pygame.K_2:
-                    if os.path.exists("ppo_minirisk_mixed.zip"):
-                        return "ppo_minirisk_mixed", "Mixed PPO"
+                    if os.path.exists("models/ppo_minirisk_mixed.zip"):
+                        return "models/ppo_minirisk_mixed", "Mixed PPO"
                     else:
                         screen.fill(WHITE)
                         draw_centered_text(screen, "Mixed model not found.", title_font, 260, RED)

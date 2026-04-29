@@ -11,8 +11,8 @@ from env import MiniRiskEnv
 from agents import RandomAgent, GreedyAgent
 
 
-NORMAL_MODEL_PATH = "ppo_minirisk"
-MIXED_MODEL_PATH = "ppo_minirisk_mixed"
+NORMAL_MODEL_PATH = "models/ppo_minirisk"
+MIXED_MODEL_PATH = "models/ppo_minirisk_mixed"
 
 
 def model_exists(model_path):
@@ -176,7 +176,7 @@ def plot_results(results):
     plt.ylabel("Average Reward")
     plt.xticks(rotation=20, ha="right")
     plt.tight_layout()
-    plt.savefig("avg_reward_by_agent.png")
+    plt.savefig("EVIDENCE/avg_reward_by_agent.png")
     plt.close()
 
     plt.figure(figsize=(12, 5))
@@ -185,7 +185,7 @@ def plot_results(results):
     plt.ylabel("Average Turns")
     plt.xticks(rotation=20, ha="right")
     plt.tight_layout()
-    plt.savefig("avg_turns_by_agent.png")
+    plt.savefig("EVIDENCE/avg_turns_by_agent.png")
     plt.close()
 
     plt.figure(figsize=(12, 5))
@@ -195,7 +195,7 @@ def plot_results(results):
     plt.ylim(0, 100)
     plt.xticks(rotation=20, ha="right")
     plt.tight_layout()
-    plt.savefig("win_rate_by_agent.png")
+    plt.savefig("EVIDENCE/win_rate_by_agent.png")
     plt.close()
 
 
