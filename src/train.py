@@ -4,7 +4,8 @@ os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 import numpy as np
 import matplotlib.pyplot as plt
 
-from stable_baselines3 import PPO
+from sb3_contrib import MaskablePPO
+from sb3_contrib.common.maskable.utils import get_action_masks
 from stable_baselines3.common.env_checker import check_env
 from stable_baselines3.common.callbacks import BaseCallback
 
@@ -13,8 +14,8 @@ from env import MiniRiskEnv
 
 class RewardCurveCallback(BaseCallback):
     """
-    Evaluates the unmasked PPO model during training and saves
-    average reward values for a comparison learning curve.
+    Periodically evaluates the current model during training and saves
+    average reward values so we can plot a learning curve.
     """
 
     def __init__(self, eval_freq=5_000, n_eval_episodes=20, verbose=1):
@@ -27,6 +28,7 @@ class RewardCurveCallback(BaseCallback):
     def _on_step(self) -> bool:
         if self.num_timesteps % self.eval_freq == 0:
             avg_reward = self.evaluate_model()
+
             self.timesteps.append(self.num_timesteps)
             self.avg_rewards.append(avg_reward)
 
@@ -49,14 +51,16 @@ class RewardCurveCallback(BaseCallback):
             total_reward = 0
 
             while not done:
-                # IMPORTANT:
-                # No action masks are used here.
+                action_masks = get_action_masks(env)
+
                 action, _ = self.model.predict(
                     obs,
                     deterministic=True,
+                    action_masks=action_masks,
                 )
 
                 obs, reward, terminated, truncated, info = env.step(action)
+
                 total_reward += reward
                 done = terminated or truncated
 
@@ -64,10 +68,10 @@ class RewardCurveCallback(BaseCallback):
 
         return np.mean(rewards)
 
-    def save_reward_curve(self, filename="training_reward_curve_unmasked.png"):
+    def save_reward_curve(self, filename="training_reward_curve.png"):
         plt.figure(figsize=(8, 5))
         plt.plot(self.timesteps, self.avg_rewards, marker="o")
-        plt.title("Unmasked PPO Learning Curve on MiniRiskEnv")
+        plt.title("PPO Learning Curve on MiniRiskEnv")
         plt.xlabel("Training Timesteps")
         plt.ylabel("Average Evaluation Reward")
         plt.grid(True)
@@ -89,7 +93,7 @@ def train_model():
 
     env = MiniRiskEnv()
 
-    model = PPO(
+    model = MaskablePPO(
         "MlpPolicy",
         env,
         verbose=1,
@@ -108,20 +112,20 @@ def train_model():
     )
 
     model.learn(
-        total_timesteps=200_000,
+        total_timesteps=100_000,
         callback=reward_callback,
     )
 
-    model.save("ppo_minirisk_unmasked")
-    reward_callback.save_reward_curve("training_reward_curve_unmasked.png")
+    model.save("models/ppo_minirisk")
+    reward_callback.save_reward_curve("training_reward_curve.png")
 
-    print("Training complete. Model saved as ppo_minirisk_unmasked.zip")
-    print("Learning curve saved as training_reward_curve_unmasked.png")
+    print("Training complete. Model saved as ppo_minirisk.zip")
+    print("Learning curve saved as training_reward_curve.png")
 
 
 def test_model():
     env = MiniRiskEnv()
-    model = PPO.load("ppo_minirisk_unmasked")
+    model = MaskablePPO.load("models/ppo_minirisk")
 
     obs, _ = env.reset()
     done = False
@@ -129,16 +133,16 @@ def test_model():
     turns = 0
     final_info = {}
 
-    print("\nTesting trained UNMASKED PPO agent...")
+    print("\nTesting trained Maskable PPO agent...")
 
     while not done:
         env.render()
 
-        # IMPORTANT:
-        # No masking here, so the model can select invalid actions.
+        action_masks = get_action_masks(env)
         action, _ = model.predict(
             obs,
             deterministic=True,
+            action_masks=action_masks,
         )
 
         obs, reward, terminated, truncated, info = env.step(action)
@@ -161,7 +165,7 @@ def test_model():
 
     env.render()
 
-    print("\nUnmasked PPO test complete.")
+    print("\nMaskable PPO test complete.")
     print(f"Total Reward: {total_reward:.2f}")
     print(f"Turns: {turns}")
 

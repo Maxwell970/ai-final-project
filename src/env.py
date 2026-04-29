@@ -24,7 +24,7 @@ INVALID_ATTACK_PENALTY = -2.0
 
 # Strategic objectives
 NEW_PLAYER_CONTINENT_REWARD = 5.0
-NEW_ENEMY_CONTINENT_PENALTY = -5.0
+NEW_ENEMY_CONTINENT_PENALTY = -5.0  
 
 
 ENEMY_SUCCESSFUL_ATTACK_PENALTY = -2.0
@@ -148,10 +148,6 @@ class MiniRiskEnv(gym.Env):
             attack_mask[i + 1] = legal_attack
 
         return np.concatenate([reinforce_mask, attack_mask])
-
-    # --------------------------------------------------
-    # CORE ENVIRONMENT HELPERS
-    # --------------------------------------------------
 
     def _get_obs(self):
         return np.concatenate([self.owners, self.troops]).astype(np.int32)
