@@ -22,9 +22,9 @@ MiniRisk PPO Agent is a custom reinforcement learning system built around a simp
 
 # Video Links
 
-Demo Link
+[Demo Video](videos/Demo%20Video.mp4)
 
-Technical Walkthrough Link
+[Technical Walkthrough](videos/Technical%20Walkthrough.mp4)
 
 ---
 
